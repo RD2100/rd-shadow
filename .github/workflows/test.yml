@@ -1,0 +1,29 @@
+# Verify the plugin's offline checks on every push and pull request.
+#
+# The suites need nothing from a running DSH: the host services are simulated and
+# the runtime-owned tool package is replaced by a validation stub. The deployed
+# checks are skipped here because they need an installed profile.
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # No lockfile is committed: this package has a single devDependency, so a
+      # plain install is both reproducible enough and free of platform noise.
+      - run: npm install --no-audit --no-fund
+      - run: npm test

@@ -28,7 +28,14 @@ try {
   const loaded = await import(yamlSpecifier())
   yaml = loaded.default ?? loaded
 } catch {
-  console.log('patch check: skipped (no js-yaml; set JS_YAML to a module path to run it)')
+  // A local checkout without `npm install` may legitimately skip this; CI may not,
+  // because a silently skipped bundle check would let a broken patch ship.
+  const underCi = process.env.CI !== undefined && process.env.CI !== '' && process.env.CI !== 'false'
+  if (underCi) {
+    console.error('patch check: FAILED — js-yaml is unavailable under CI, so the bundle patch would go unverified. Run `npm install` first.')
+    process.exit(1)
+  }
+  console.log('patch check: skipped (no js-yaml; set JS_YAML to a module path, or run `npm install`)')
   process.exit(0)
 }
 
