@@ -1,0 +1,46 @@
+# 变更记录
+
+格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
+
+## [Unreleased]
+
+### 待办（发布前）
+
+- 补 `repository` / `homepage` / `bugs` 字段（建仓后填 URL）
+- README 截图
+- 决定是否发布到 npm
+- 英文 README
+- CI（至少跑 `npm test`）
+
+## [0.1.0] — 2026-10-28
+
+首个可用版本：影子身份、调遣链路、权限身份。
+
+### Added
+
+- **侧栏入口与面板**：列出影子目录下的会话、选择打开、新建、重命名、归档
+- **权限身份装配**：影子目录内的会话自动获得 `auto` 档（全盘沙箱 + 官方逐次评审），每次恢复重新钉住
+- **`shadow_targets`**：列出工作区与会话（id、实时状态、归档/子代理标记、标题），影子自己发现目标
+- **`shadow_inspect`**：只读查看单个会话的状态、工作目录、当前模型、事件序号；支持 `afterSeq`/`limit` 分页读事件，页头给出总数与末尾 seq
+- **`shadow_dispatch`**：向目标会话投递消息，消息带 `source={kind:'agent-message', form:'relay', senderSessionId}`，回执含五态状态与精确的日志证据（`inbox@seq`、`user@seq`、`execution@seq`）
+- **幂等**：同一次工具调用重放不会重复投递（确定性 messageId + 投递前扫描 + 同目标串行化）
+- **可移植目录**：默认 `<家目录>/dsh-shadow`，支持 `~` 展开与行配置覆盖（浏览器半边要求显式配置）
+- **启动预检**：缺服务或版本不匹配时点名告警，而非让影子会话莫名起不来
+- **离线验证体系**：`npm test` 覆盖纯核判断、host 预检、宿主仿真、patch 结构、发布产物自足性
+
+### Fixed
+
+- 工具返回值形态（`output.schema` 要求字符串，回执需在 execute 内渲染）
+- 日志中的工具参数是原始 JSON 字符串，直接深比较会把每次投递误判成身份冲突（新增 `argumentsMatch` 精确镜像官方解析）
+- 目标无请求头时回退到宿主默认模型，而不是直接拒绝
+- 状态判定优先级：持久阻断项（`waiting-user`/`pending`）高于 `cold`/`busy`
+- `shadow_targets` 标题全空：`readTitleSnapshots` 返回包装信封 `{status, value}`，需两层解包
+- 目标 id 少 `session-` 前缀时给出精确提示（`did you mean "session-…"?`），并把三种目标错误分开命名
+- 工作区已存在时不再抛「could not adopt」（adopt 是幂等的）
+
+### Known Limitations
+
+- 每次工具调用都要过一次官方评审，实测单次 6–53 秒
+- 不可逆操作的弹窗条件是「授权缺失」而非「每次必问」；评审不读文件系统
+- 未挂载 `@deepseek-ai/dsh-experimental-auto-review` 时，影子会退化成全盘且不审批
+- 仅支持带 GUI 的 profile；对 DSH 版本有硬依赖（`dsh-desktop-next 2.0.20-next` / harness `0.2.1-rc.3`）

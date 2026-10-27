@@ -1,0 +1,62 @@
+{
+  "name": "dsh-plugin-shadow",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Shadow coordinator: supervise work across your projects and dispatch messages to other Sessions, with explicit selection and audit-ready delivery receipts",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "agent",
+    "coordinator",
+    "orchestration"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RD2100/rd-shadow.git"
+  },
+  "homepage": "https://github.com/RD2100/rd-shadow#readme",
+  "bugs": {
+    "url": "https://github.com/RD2100/rd-shadow/issues"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./tools": "./lib/tools.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": [
+        "./cordis.patch.yml"
+      ]
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "LICENSE",
+    "README.md",
+    "README.en.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:deployed": "node tests/run.mjs --deployed",
+    "pack:check": "node scripts/pack-check.mjs",
+    "sync": "node scripts/sync.mjs"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

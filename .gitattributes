@@ -1,0 +1,6 @@
+# Normalize line endings on commit so the repository reads the same on every
+# platform; the plugin itself only ships text.
+* text=auto eol=lf
+
+# Windows-specific helper scripts, if any are ever added, keep their endings.
+*.ps1 text eol=crlf

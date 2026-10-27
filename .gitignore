@@ -1,0 +1,14 @@
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+
+# Local verification leftovers
+*.log
+.tmp/
