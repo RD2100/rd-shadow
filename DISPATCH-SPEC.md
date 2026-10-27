@@ -619,7 +619,20 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 6. **M4 端到端验证仍挂起**：让影子尝试一次不可逆操作，确认审批出现且 body 未执行（需桌面端配合，见 DESIGN M4）。
 7. **部署状态**：源码与 profile 副本已同步（SHA-256 逐文件核对），并已随 2026-10-27 21:18 的重启生效——子路径解析与 preset 行实例化均已实证（§11.4）。备份：`D:\DSH\.tmp-inherit\profile-backup-shadow-m1`（回滚只需把该目录内容覆盖回去）。
 
-### 12.1 目录可移植性（v1.0 发布前置，已落地第一步）
+### 12.3 发布（2026-10-28）
+
+仓库：[RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)（远端仓库名 `rd-shadow`，包名仍是 `dsh-plugin-shadow`——安装以包名为准）。
+
+首次推送已完成：`main` = `bbe1915`，29 个文件，本地与远端一致、工作区干净。包里同时带中英文 README（`README.md` / `README.en.md` 互相链接）与 `CHANGELOG.md`。
+
+发布链路的两个自检已接入 `npm test`：
+
+- `scripts/pack-check.mjs`：`files` 覆盖每个 `lib/*.js`、每个 `exports` 入口存在且被发布、运行时 import 不越出发布集、**只复制发布集仍能跑通 tools 套件**（当前 98.5 KiB）。
+- `scripts/sync.mjs`：按磁盘枚举 `lib/*.js` 复制进 profile 并自动跑 `--deployed`，杜绝半同步。
+
+尚未做：README 截图、npm 发布决定、CI、设计文档英译（见 CHANGELOG `Unreleased` 待办）。
+
+### 12.4 目录可移植性（v1.0 发布前置，已落地）
 
 原实现把 `D:\DSH\shadow` 写死在 4 处（`client.js`、`shadow-dir.js`、patch 的两行），别人装上去会指向他机器上不存在的目录。改为：
 

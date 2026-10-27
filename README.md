@@ -218,11 +218,12 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 
 ## 发布前待办（维护者）
 
-- [ ] 补 `repository` / `homepage` / `bugs` 字段（建仓后填 URL）
+- [x] `repository` / `homepage` / `bugs` 指向 [RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)
+- [x] 英文 README（[README.en.md](README.en.md)，两版互相链接）
 - [ ] 截图放进 README
 - [ ] 决定是否发布到 npm（不发布则只能从 git 或本地路径安装）
-- [ ] 英文 README（当前为中文）
 - [ ] CI：至少跑 `npm test`
+- [ ] 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
 
 ---
 

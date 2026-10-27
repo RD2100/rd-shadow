@@ -6,11 +6,10 @@
 
 ### 待办（发布前）
 
-- 补 `repository` / `homepage` / `bugs` 字段（建仓后填 URL）
-- README 截图
+- 截图放进 README
 - 决定是否发布到 npm
-- 英文 README
 - CI（至少跑 `npm test`）
+- 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
 
 ## [0.1.0] — 2026-10-28
 
