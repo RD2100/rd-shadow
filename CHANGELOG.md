@@ -25,7 +25,9 @@
 - **幂等**：同一次工具调用重放不会重复投递（确定性 messageId + 投递前扫描 + 同目标串行化）
 - **可移植目录**：默认 `<家目录>/dsh-shadow`，支持 `~` 展开与行配置覆盖（浏览器半边要求显式配置）
 - **启动预检**：缺服务或版本不匹配时点名告警，而非让影子会话莫名起不来
+- **`enforcePermissionPreset` 配置**：默认 `true`（每次恢复写回 `permissionPreset`）；设为 `false` 时只钉日志里尚无权限选择的会话，手动切换的权限得以保留
 - **离线验证体系**：`npm test` 覆盖纯核判断、host 预检、宿主仿真、patch 结构、发布产物自足性
+- **CI**：ubuntu/windows × node 22/24 跑 `npm test`；CI 环境缺 js-yaml 时硬失败，避免 patch 校验被静默跳过
 
 ### Fixed
 
