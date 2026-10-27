@@ -154,6 +154,10 @@
         # per-call review, so only irreversible calls ask. Falls back to
         # `danger-full-access` when the reviewer is not mounted.
         permissionPreset: auto
+        # Enforce `permissionPreset` on every (re)start of a shadow Session. Set
+        # to false to keep a preset you switched by hand: the plugin then only
+        # pins Sessions whose log records no permission choice yet.
+        enforcePermissionPreset: true
         # Directory adopted as the shadow's own Workspace. Change it here rather
         # than editing the client bundle. Must equal the `shadow-tools` row's
         # value above. `~` expands to the user's home; omit this key entirely to

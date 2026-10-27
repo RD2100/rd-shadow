@@ -633,7 +633,6 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 尚未做：README 截图、npm 发布决定、CI、设计文档英译（见 CHANGELOG `Unreleased` 待办）。
 
 ### 12.4 目录可移植性（v1.0 发布前置，已落地）
-
 原实现把 `D:\DSH\shadow` 写死在 4 处（`client.js`、`shadow-dir.js`、patch 的两行），别人装上去会指向他机器上不存在的目录。改为：
 
 | 半边 | 规则 |
@@ -665,3 +664,18 @@ shadow (dsh-plugin-shadow): failed to import … 1 entry did not activate
 2. `npm run sync -- --profile <profile 目录>`（复制 + 验证一步完成；手工等价做法是复制后跑 `tests/run.mjs --deployed`）；
 3. 重启实例；
 4. 重启后核对日志里有两样东西：`shadow: directory <path>`（预检生效）、以及**没有** `did not activate`。
+
+### 12.5 A4 收口：手动权限覆盖（配置项，2026-10-28）
+
+原开放问题：用户在 composer 里把影子会话手动切到 `danger-full-access` 后，插件会在下次恢复时改回 `auto`——要不要允许保留？
+
+**处理方式**：不猜用户偏好，给出配置项，默认保持已验证行为。
+
+| 配置 | 语义 |
+|---|---|
+| `enforcePermissionPreset: true`（默认） | 每次会话创建/恢复都把权限写回 `permissionPreset`。这是 §11.4 验证过的行为，也是「影子身份恒为 `auto`」的字面实现 |
+| `enforcePermissionPreset: false` | 只钉**日志里还没有 `permission/preset` 事件**的会话；已记录选择的一律不碰，用户的手动切换得以保留 |
+
+实现要点：`permissionPresets.current()` 是从「沙箱 + 审批 + 预设」折叠推导出来的，**永远有值**（最差是 `custom`），无法区分"用户选的"和"部署默认"。所以关闭强制时改用日志判断——`session.snapshotEvents()` 里是否存在 `permission/preset`。日志读不出来时按"已记录"处理（保守：宁可不动用户的设置）。
+
+测试：`tests/host-preflight.test.mjs` 新增 4 项覆盖——默认强制覆盖、关闭后保留、关闭但仍钉无记录会话、日志不可读时保守跳过。

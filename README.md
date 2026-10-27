@@ -87,6 +87,53 @@ dsh plugin --profile web add <npm 包名 | git 地址 | 绝对路径>
 - `shadowDir` 是**影子的身份**：住在这里的会话才算影子，才拿到权限身份，才有那三个工具。
 - 省略 `shadowDir` 时 host 侧用默认 `<家目录>/dsh-shadow`；**浏览器半边不支持默认值**，所以请显式写一行。
 - 首次使用会在该目录创建 workspace；再点一次会复用，不会重复注册。
+- `enforcePermissionPreset`（默认 `true`）：每次会话被创建/恢复都把权限改回 `permissionPreset`。**如果你会手动切 `danger-full-access`，把它设为 `false`**——那样插件只钉那些日志里还没有权限选择的会话，你的手动切换会被保留。
+
+---
+
+## 架构
+
+```mermaid
+flowchart LR
+  subgraph 用户
+    U[侧栏「影子」面板]
+  end
+
+  subgraph 影子会话[影子会话 · preset shadow · 权限 auto]
+    M[模型]
+    T1[shadow_targets]
+    T2[shadow_inspect]
+    T3[shadow_dispatch]
+  end
+
+  subgraph 目标会话[目标会话 · 任意工作区]
+    IN[收件箱 splice]
+    LOG[(会话日志)]
+  end
+
+  subgraph 宿主[DSH 宿主]
+    PP[permissionPresets]
+    SQ[sessionQuery]
+    SC[sessionController]
+    AR[experimental-auto-review]
+  end
+
+  U -->|选中/新建/归档| PP
+  M --> T1 --> SQ
+  M --> T2 --> SQ
+  M --> T3 --> SC
+  T3 -->|agent.send 中继消息| IN
+  IN --> LOG
+  SC -->|取证| SQ
+  LOG -.->|source: agent-message| T2
+  M -->|每次工具调用| AR
+```
+
+三条要点：
+
+1. **能力跟着预设走**：三个工具只注册在 `shadow` 预设的 agent 作用域里，别的会话看不到。
+2. **身份跟着目录走**：`shadowDir` 里的会话才被钉 `auto`，才被视为影子。
+3. **投递可追溯**：消息带 `source={kind:'agent-message'}`，接收方日志能重建"谁派来的"；回执里的 `inbox@seq`/`user@seq` 指向目标日志的具体事件。
 
 ---
 

@@ -21,13 +21,20 @@ function check(name, fn) {
 
 /**
  * Build the minimal host context `apply` needs.
- * @param options - which services exist and whether sessions are listed.
- * @returns the fake context plus the collected log lines.
+ * @param options - which services exist, whether sessions are listed, and how the
+ *   one listed session reports its recorded presets.
+ * @returns the fake context plus the collected log lines and applied presets.
  */
 function makeCtx(options = {}) {
   const services = options.services ?? ['permissionPresets', 'sessions']
   const lines = []
-  const sessions = options.sessions ?? []
+  const applied = []
+  const events = options.recordedPreset === false ? [] : [{ type: 'permission/preset', data: { preset: 'workspace-write' } }]
+  const sessions = options.sessions ?? [{
+    id: 'shadow-1',
+    header: { cwd: 'D:\\work\\shadow' },
+    snapshotEvents: () => (options.unreadableLog === true ? throwUnreadable() : events),
+  }]
   const ctx = {
     logger: {
       info: (message) => lines.push(`info ${message}`),
@@ -41,7 +48,7 @@ function makeCtx(options = {}) {
         permissionPresets: {
           names: options.presetNames ?? ['auto', 'danger-full-access'],
           current: () => options.currentPreset ?? 'workspace-write',
-          set: () => {},
+          set: (session, target) => applied.push(`${session.id}:${target}`),
         },
         sessions: { list: () => sessions },
       }
@@ -49,7 +56,12 @@ function makeCtx(options = {}) {
       callback(scope)
     },
   }
-  return { ctx, lines }
+  return { ctx, lines, applied }
+}
+
+/** A log accessor that fails, to prove the fallback keeps the user's choice. */
+function throwUnreadable() {
+  throw new Error('log unavailable')
 }
 
 check('names the effective directory at startup', () => {
@@ -94,8 +106,33 @@ check('a preflight failure never stops the plugin', () => {
 })
 
 check('a session outside the directory is left alone', () => {
-  const { ctx } = makeCtx({ sessions: [{ id: 's-1', header: { cwd: 'D:\\elsewhere' } }] })
+  const { ctx, applied } = makeCtx({ sessions: [{ id: 's-1', header: { cwd: 'D:\\elsewhere' } }] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
+  assert.deepEqual(applied, [])
+})
+
+check('by default the shadow identity is enforced over a recorded preset', () => {
+  const { ctx, applied } = makeCtx({ recordedPreset: true })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.deepEqual(applied, ['shadow-1:auto'])
+})
+
+check('enforcePermissionPreset:false keeps a preset the user chose', () => {
+  const { ctx, applied } = makeCtx({ recordedPreset: true })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow', enforcePermissionPreset: false })
+  assert.deepEqual(applied, [], 'a recorded preset must not be overridden')
+})
+
+check('enforcePermissionPreset:false still pins a session with no recorded preset', () => {
+  const { ctx, applied } = makeCtx({ recordedPreset: false })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow', enforcePermissionPreset: false })
+  assert.deepEqual(applied, ['shadow-1:auto'])
+})
+
+check('an unreadable log counts as recorded, so the user keeps their choice', () => {
+  const { ctx, applied } = makeCtx({ unreadableLog: true })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow', enforcePermissionPreset: false })
+  assert.deepEqual(applied, [])
 })
 
 console.log(`host preflight check: ${passed} checks passed`)

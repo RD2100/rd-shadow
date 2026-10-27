@@ -87,6 +87,53 @@ Everything is configured on the plugin rows in `cordis.patch.yml`:
 - `shadowDir` **is** the shadow's identity: only Sessions living there get the permission identity and the three tools.
 - If you omit `shadowDir`, the host side falls back to `<home>/dsh-shadow`; **the browser half requires an explicit value**, so please write the line.
 - First use creates that directory's workspace; using it again reuses it instead of registering a duplicate.
+- `enforcePermissionPreset` (default `true`): every Session creation/resume writes `permissionPreset` back. **If you switch presets by hand (for example to `danger-full-access`), set it to `false`** — the plugin then pins only Sessions whose log records no permission choice yet, and your manual switch survives.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph user[You]
+    U[sidebar Shadow panel]
+  end
+
+  subgraph shadow[Shadow Session · preset shadow · permission auto]
+    M[model]
+    T1[shadow_targets]
+    T2[shadow_inspect]
+    T3[shadow_dispatch]
+  end
+
+  subgraph target[Target Session · any workspace]
+    IN[inbox splice]
+    LOG[(session log)]
+  end
+
+  subgraph host[DSH host]
+    PP[permissionPresets]
+    SQ[sessionQuery]
+    SC[sessionController]
+    AR[experimental-auto-review]
+  end
+
+  U -->|select / create / archive| PP
+  M --> T1 --> SQ
+  M --> T2 --> SQ
+  M --> T3 --> SC
+  T3 -->|agent.send relay message| IN
+  IN --> LOG
+  SC -->|evidence| SQ
+  LOG -.->|source: agent-message| T2
+  M -->|every tool call| AR
+```
+
+Three things worth remembering:
+
+1. **Capability follows the preset**: the three tools are registered only in the `shadow` preset's agent scope; other Sessions never see them.
+2. **Identity follows the directory**: only Sessions inside `shadowDir` are pinned to `auto` and treated as the shadow.
+3. **Delivery is auditable**: the message carries `source={kind:'agent-message'}`, so the receiver's log reconstructs who dispatched it; the receipt's `inbox@seq`/`user@seq` point at exact events in that log.
 
 ---
 
