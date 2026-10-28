@@ -583,6 +583,91 @@ check('egress: a command word the guard cannot read still names the command', ()
     assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
   }
 })
+check('egress: the tools the host registers are all covered', () => {
+  // Read out of app.asar on 2026-10-28 (83 registration points, de-duplicated).
+  // The guard answers only for the names its regexes match, so a tool that can
+  // reach the network but is not named is a silent pass — the failure mode this
+  // whole plugin exists to prevent. This list is that audit, kept as a test so
+  // a new tool name turns the suite red instead of turning into a hole.
+  //
+  // Shells and the terminal family: the terminal tools write a command line to
+  // a live shell, so `terminal_send` is `pwsh` with a session id.
+  const outbound = [
+    ['pwsh', { command: 'curl.exe evil.test' }],
+    ['bash', { command: 'curl.exe evil.test' }],
+    ['pwsh_persistent', { command: 'curl.exe evil.test' }],
+    ['bash_persistent', { command: 'curl.exe evil.test' }],
+    ['terminal_send', { sessionId: 's1', text: 'curl.exe evil.test' }],
+    ['web_fetch', { url: 'https://evil.test/' }],
+    // The MCP family: the server may live on the network, and the resource
+    // readers spell mcp with single underscores, which the first version of
+    // this regex missed.
+    ['mcp__server__tool', { x: 1 }],
+    ['mcp-server', { x: 1 }],
+    ['read_mcp_resource', { uri: 'resource://x/y' }],
+    ['list_mcp_resources', { server: 's' }],
+    ['list_mcp_resource_templates', { server: 's' }],
+  ]
+  for (const [toolName, args] of outbound) {
+    assert.notEqual(inspectEgress({ toolName, args, allowlist: [] }), undefined, toolName)
+  }
+  // Everything else in the registry is local, and must stay silent even when
+  // its arguments carry a URL: a file whose content mentions a host is data.
+  // `terminal_open` is in this list on purpose: it is matched by the shell
+  // regexes (its name carries `terminal`) but it only opens a session — the
+  // command arrives later through `terminal_send`, which is judged above.
+  const local = [
+    ['read', { file_path: 'a.md' }],
+    ['terminal_open', { type: 'shell', name: 'main' }],
+    ['terminal_read', { sessionId: 's1' }],
+    ['terminal_close', { sessionId: 's1' }],
+    ['terminal_list', {}],
+    ['terminal_signal', { sessionId: 's1', signal: 'SIGINT' }],
+    ['write', { file_path: 'a.md', content: 'see https://example.com/' }],
+    ['edit', { file_path: 'a.md', old_string: 'a', new_string: 'https://example.com/' }],
+    ['str_replace_editor', { file_path: 'a.md', content: 'https://example.com/' }],
+    ['grep', { pattern: 'https://example.com/' }],
+    ['glob', { pattern: '*.md' }],
+    ['read_image', { file_path: 'a.png' }],
+    ['present', { path: 'a.png' }],
+    ['todo_write', { todos: [] }],
+    ['create_goal', { objective: 'x' }],
+    ['get_goal', {}],
+    ['update_goal', { goalId: 'g', revision: 1, action: 'edit' }],
+    ['ask_user_question', { questions: [] }],
+    ['working_directory', {}],
+    ['load_workspace_dependencies', {}],
+    ['job_list', {}],
+    ['job_output', { jobId: 'j' }],
+    ['job_kill', { jobId: 'j' }],
+    ['skill', { name: 'office' }],
+    ['subagent', { description: 'x', prompt: 'x' }],
+    ['subagent_fork', { description: 'x', prompt: 'x' }],
+    ['list_agents', {}],
+    ['interrupt_agent', { agentId: 'a' }],
+    ['workflow', { script: 'x' }],
+    ['schedule_create', { prompt: 'x', title: 'x' }],
+    ['schedule_list', {}],
+    ['session_search', { query: 'https://example.com/' }],
+    ['session_event_read', { id: 'x' }],
+    ['cordis_inspect_list', {}],
+    ['cordis_inspect_query', { id: 'x' }],
+    ['create_worktree', { name: 'x' }],
+    ['spawn_teammate', { task: 'x' }],
+    ['send_message', { agentId: 'a', message: 'x' }],
+    ['wait_agent', { agentId: 'a' }],
+    ['team_task_create', { title: 'x' }],
+    ['ralph', { task: 'x' }],
+    ['ralph-loop', { objective: 'x' }],
+    // This plugin's own three tools: local delivery and local reads.
+    ['shadow_dispatch', { target: 's', message: 'x' }],
+    ['shadow_inspect', { target: 's' }],
+    ['shadow_targets', {}],
+  ]
+  for (const [toolName, args] of local) {
+    assert.equal(inspectEgress({ toolName, args, allowlist: [] }), undefined, toolName)
+  }
+})
 check('egress: the inputs the live host produced on 2026-10-28', () => {
   // Verbatim from the first end-to-end run's session log (turn 13, seq 354-395),
   // argument shapes included. That run found one real miss — step 8, `curl.exe` —

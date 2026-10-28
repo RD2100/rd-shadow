@@ -636,6 +636,7 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 | 命令头归一化 | 段首的裸命令名先归一化再匹配：剥可执行后缀（`.exe/.cmd/.bat/.com/.ps1`，含 Windows 尾点 `curl.exe.`）、剥路径前缀、剥转发外壳（`cmd /c`、`powershell -c`）、剥包裹引号，循环到稳定点。这一族是端到端抓到的真漏报（见下） |
 | 读不出的命令词 | 段首是变量或字符串求值器（`$c`、`$env:ComSpec`、`iex`、`Invoke-Expression`）时，命令不在段首：先解析同一命令行的赋值（`$c = "curl.exe"; & $c host` 解析成 curl 调用），再整段搜索命令名。普通未知命令词（`grep curl file`）不搜——守卫读不全世界的命令名，搜了就会对"在文件里搜 curl"提问 |
 | 版本/帮助豁免 | 客户端的**唯一参数**是 `--version`/`--help`/`-V`/`-h`/`-?` 时不问（不触网）。必须是唯一参数且区分大小写：`curl -v host`（verbose）、`curl -H … host`（头）、`telnet -V host`（带目的地）都照旧问 |
+| 工具名覆盖 | 守卫只对它认得出的工具名作答，所以「名字漏配」本身就是漏报。注册表事实（2026-10-28 从 app.asar 逐个包读出，83 个注册点去重）已固化成测试：能触网的是 shell 系（`pwsh`/`bash` 及 `_persistent` 变体）、终端系（`terminal_open/send/read/close/list/signal`——`terminal_send` 就是带会话 id 的 `pwsh`）、web 系（`web_fetch`/`web_search`）、MCP 系（`mcp__srv__tool` 双下划线、`mcp-srv` 连字符、以及 `read_mcp_resource`/`list_mcp_resources`/`list_mcp_resource_templates` 单下划线——最后三个第一版漏了，见下）。其余工具（文件、会话查询、cordis 检查、worktree、子代理、ralph、本插件自己的 `shadow_dispatch`/`shadow_inspect`/`shadow_targets`）都是本地的，即使参数里带 URL 也静默 |
 | 污点 | `protectedPaths`（默认七项）在**本轮**被读过 → 该会话本轮所有外发都问人，`turn/start`/`turn/end` 清空 |
 | 本机豁免 | `localhost`、`127.0.0.1`、`0.0.0.0`、`::1`、`[::1]` |
 | 白名单 | `egressAllowlist`（默认空 = 每次外发都问）；支持 `.example.com` 形式的子域后缀匹配 |
@@ -643,7 +644,7 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 | 处置 | `approval.request` 且只接受 `allowed-once`；审批服务缺失、审批抛错、**守卫自身抛错** → 一律拒绝（fail closed） |
 | 不打扰 | 写文件/编辑/调遣等不触网的工具即使正文含 URL 也不问；数据类命令（`echo`/`git commit -m …`/构建工具）把 URL 当散文——包括带后缀的写法（`git.exe commit -m "docs: curl"`） |
 
-验证：纯核 76 项 + 集成仿真 52 项（含「守卫自己抛错时拒绝且不弹窗」）+ 四个对抗探针（宽矩阵 0 意外、12/12、可执行后缀族 31/31 捕获 / 14/14 静默、读不出的命令词 20/20 捕获 / 6/6 静默）+ 端到端首次运行的 8 个真实调用原样回归（已固化进测试）。全部用假数据，不需要真实外发。
+验证：纯核 77 项 + 集成仿真 52 项（含「守卫自己抛错时拒绝且不弹窗」）+ 四个对抗探针（宽矩阵 0 意外、12/12、可执行后缀族 31/31 捕获 / 14/14 静默、读不出的命令词 20/20 捕获 / 6/6 静默）+ 端到端首次运行的 8 个真实调用原样回归 + 工具注册表覆盖审计（12 个能触网的全部问人、33 个本地工具全部静默），后两项都已固化进测试。全部用假数据，不需要真实外发。
 
 **端到端的价值（记下来）**：五轮离线排查加 75 项单测都没发现，真实环境第一趟就抓到 `curl.exe --max-time 3 host` 整族静默放行——因为测试用例全是按 Unix 习惯写的裸命令名。修法是命令头归一化。同一次运行还证明代理侧**看不到审批弹窗**（它把「被允许后正常返回」当成「没人问」，误报 3 项），所以验证提示词改成「代理报结局、操作员在会话日志里核 `approval/asked`」。
 
