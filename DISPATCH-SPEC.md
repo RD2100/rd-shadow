@@ -680,3 +680,20 @@ shadow (dsh-plugin-shadow): failed to import … 1 entry did not activate
 实现要点：`permissionPresets.current()` 是从「沙箱 + 审批 + 预设」折叠推导出来的，**永远有值**（最差是 `custom`），无法区分"用户选的"和"部署默认"。所以关闭强制时改用日志判断——`session.snapshotEvents()` 里是否存在 `permission/preset`。日志读不出来时按"已记录"处理（保守：宁可不动用户的设置）。
 
 测试：`tests/host-preflight.test.mjs` 新增 4 项覆盖——默认强制覆盖、关闭后保留、关闭但仍钉无记录会话、日志不可读时保守跳过。
+
+### 12.6 权限身份的两条运行事实（2026-10-28 重启核对）
+
+**① 挂载时就把"评审是否在位"打出来。** 原来的可观测性缺口：auto-review 是静默插件，它挂没挂从日志看不出来；而钉住逻辑只在**有活会话**时才跑，冷会话不触发。于是「当前部署会不会退化成全权不审」在启动时无法判断。现在 `apply` 挂载时解析一次目标身份并记录：
+
+```
+shadow: directory D:\DSH\shadow          ← 生效目录
+shadow: permission identity auto          ← auto 可用（评审在位）
+```
+
+不可用时给出可行动的告警（点名 `@deepseek-ai/dsh-experimental-auto-review`），而不是静默退化。测试 3 项覆盖（auto 可用 / 只有 fallback / 两者都无）。
+
+**② auto-review 关机时会把 `auto` 翻回 `danger-full-access`。** 该插件的 dispose 处理器对所有 `auto` 会话执行 `permissionPresets.set(session, "danger-full-access")`。所以**冷影子会话日志里最后记录的档位常常是 `danger-full-access` + `never`**——那不是本插件的写入，也不是配置错误：
+
+- 冷会话不跑工具，这个记录值没有实际风险；
+- 会话被恢复时会触发 `session/created`，本插件的 `pin` 写入 `auto`（日志 `shadow: <id> permission -> auto`），2026-10-27 的 00:26:50 与 15:26:50 两次重启都可观察到；
+- 排查时以**最近一条 `permission/preset`** 为准，并确认之后是否出现过 `shadow: … permission -> auto`。

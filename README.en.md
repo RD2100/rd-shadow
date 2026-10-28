@@ -236,6 +236,17 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
 
   The files on disk are actually consistent; only HMR's module graph is stale. **A restart always recovers.** Symptom check: the log shows `did not activate`, and no later `shadow:` lines appear.
 
+  After a successful restart the log carries exactly these two lines, and they are worth their weight when diagnosing:
+
+  ```
+  shadow: directory /home/you/dsh-shadow   ← effective directory (is the config right?)
+  shadow: permission identity auto          ← auto available = the reviewer is mounted
+  ```
+
+  If the second line becomes a `using "danger-full-access" instead` warning, the profile does not mount `@deepseek-ai/dsh-experimental-auto-review` — and then the shadow runs with **full access and no review at all**.
+
+  > A cold shadow Session's log may end on `danger-full-access` + `never`: that is auto-review flipping `auto` back **on shutdown**, not a configuration error, and not a risk (a cold Session cannot run tools). Opening the Session re-pins `auto`, and the log shows `shadow: <id> permission -> auto`.
+
 - So a sync must end with a deployed check. `npm run sync` does the whole thing (enumerates `lib/*.js` from disk, copies, then runs `--deployed`, so a half-finished copy fails immediately):
 
   ```sh

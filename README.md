@@ -235,6 +235,17 @@ npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自
 
   磁盘上的文件其实是自洽的，只是 HMR 的模块图陈旧；**重启必然恢复**。判断方法：日志里有 `did not activate`，且此后没有新的 `shadow:` 日志。
 
+  重启成功后，日志里应该正好有这两行，排查时值千金：
+
+  ```
+  shadow: directory D:\DSH\shadow        ← 生效目录（配置对不对看这一行）
+  shadow: permission identity auto        ← auto 可用 = 评审在位
+  ```
+
+  第二行若变成 `using "danger-full-access" instead` 的告警，说明 profile 里没挂 `@deepseek-ai/dsh-experimental-auto-review`——那样影子就是**全权不审**。
+
+  > 冷影子会话的日志里最后可能记着 `danger-full-access` + `never`：那是 auto-review **关机时**把 `auto` 翻回去的结果，不是配置错误，也不影响安全（冷会话跑不了工具）。会话被打开时会重新钉回 `auto`，日志出现 `shadow: <id> permission -> auto`。
+
 - 因此同步流程必须以这一步收尾（`npm run sync` 一次做完：按磁盘枚举 `lib/*.js` 复制，再跑 `--deployed`，半同步立刻失败）：
 
   ```sh

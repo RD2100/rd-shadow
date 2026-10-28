@@ -111,6 +111,26 @@ check('a session outside the directory is left alone', () => {
   assert.deepEqual(applied, [])
 })
 
+check('the available identity is named at mount, so "is the reviewer mounted" is observable', () => {
+  const { ctx, lines } = makeCtx()
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.ok(lines.includes('info shadow: permission identity auto'), lines.join('\n'))
+})
+
+check('a missing reviewer is reported as an unreviewed fallback, not silence', () => {
+  const { ctx, lines } = makeCtx({ presetNames: ['danger-full-access'] })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  const warning = lines.find((line) => line.startsWith('warn') && line.includes('no per-call review'))
+  assert.ok(warning !== undefined, lines.join('\n'))
+  assert.match(warning, /experimental-auto-review/)
+})
+
+check('a runtime with neither candidate warns about the identity it cannot apply', () => {
+  const { ctx, lines } = makeCtx({ presetNames: ['workspace-write'] })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.ok(lines.some((line) => line.startsWith('warn') && line.includes('no usable permission preset')), lines.join('\n'))
+})
+
 check('by default the shadow identity is enforced over a recorded preset', () => {
   const { ctx, applied } = makeCtx({ recordedPreset: true })
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
