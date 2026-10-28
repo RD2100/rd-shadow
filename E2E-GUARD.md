@@ -186,4 +186,4 @@ for (let i = 0; i < b.length - 4; i += 1) {
 - 第 5 步若读取本身弹审批，来自官方评审（它不看文件系统），不是出网守卫。
 - 白名单**放行**路径（`egressAllowlist` 非空时同 host 静默）在本配置下测不到——
   需要临时给 `cordis.patch.yml` 加一个 host 再重启一次。
-- 重定向外跳、脚本/别名间接、解释器非 URL 外发、DNS/UNC 外泄：见 README「覆盖不到」。
+- 重定向外跳、解释器非 URL 外发、程序内部发起的 DNS 查询、写本地同步目录再由他进程送出：见 README「覆盖不到」。（命令行里写了名字的 DNS 查询、`\\host\share\` 共享路径、`npm run`/`make` 脚本体已由离线探针与测试覆盖，见 `unc-dns-probe.mjs` 与 `tests/dispatch-core.test.mjs`。）

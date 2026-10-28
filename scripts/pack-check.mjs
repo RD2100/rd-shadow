@@ -80,7 +80,10 @@ check('every declared entry point exists and is published', () => {
 
 check('runtime imports stay inside the published set', () => {
   const published = new Set(['package.json', 'cordis.patch.yml', ...DOCS, ...libFiles()])
-  const allowedBare = new Set(['@deepseek-ai/dsh-tools', 'node:os', 'node:path', 'node:crypto', 'node:util'])
+  // node:fs is here deliberately: the script resolver reads package.json and
+  // Makefile so `npm run release` can be judged by what it runs. It is a
+  // builtin, so the published set still stands alone.
+  const allowedBare = new Set(['@deepseek-ai/dsh-tools', 'node:os', 'node:path', 'node:crypto', 'node:util', 'node:fs'])
   const problems = []
   for (const relative of libFiles()) {
     const source = readFileSync(path.join(ROOT, relative), 'utf8')

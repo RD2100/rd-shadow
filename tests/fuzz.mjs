@@ -75,6 +75,15 @@ const RECIPES = [
   { client: 'svn', rest: `checkout https://${HOST}/repo`, why: 'remote checkout' },
   { client: 'python', rest: `-c "import urllib.request as u;u.urlopen('https://${HOST}/')"`, why: 'interpreter with a URL' },
   { client: 'node', rest: `-e "fetch('https://${HOST}/')"`, why: 'interpreter with a URL' },
+  // A name lookup leaves the name in the DNS query even when no connection
+  // follows, so these are recipes like any other — and the one family where the
+  // guard reads the *name* rather than the command, which is what lets an
+  // allowlisted host stay quiet and an address literal say nothing at all.
+  { client: 'ping', rest: `-n 1 ${HOST}`, why: 'DNS name lookup' },
+  { client: 'Test-NetConnection', rest: HOST, why: 'DNS name lookup' },
+  { client: 'tnc', rest: HOST, why: 'DNS name lookup' },
+  { client: 'Resolve-DnsName', rest: HOST, why: 'DNS name lookup' },
+  { client: 'nslookup', rest: HOST, why: 'DNS name lookup' },
 ]
 
 // --- disguises: same command, different spelling --------------------------
@@ -232,6 +241,13 @@ const LOCAL = [
   'git --version',
   'npm --version',
   'docker --version',
+  // A name lookup that resolves nothing but an address needs no DNS query, so
+  // it carries no name out of the machine — the same rule that lets an
+  // allowlisted host stay quiet, applied to the other side.
+  'ping 8.8.8.8',
+  'ping 127.0.0.1',
+  'tracert 1.1.1.1',
+  'Test-NetConnection localhost',
 ]
 let quiet = 0
 for (const command of LOCAL) {

