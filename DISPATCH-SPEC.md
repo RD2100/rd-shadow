@@ -631,17 +631,21 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 
 | 项 | 实现 |
 |---|---|
-| 纯规则 | `dispatch-core.inspectEgress({toolName, args, allowlist})`：递归收集参数里的字符串（深度 4、单串 20 000 字符、最多 200 条），从中提取 `http(s)://` 的 authority，剥掉凭据与端口后比对白名单 |
-| 触发条件 | 只检查**能触网**的调用：工具名匹配 `web-fetch/fetch/http/browse`，或 shell 类工具（`pwsh/powershell/bash/sh/cmd/shell/terminal/exec`）**且**命令里出现 URL 或 `curl/wget/iwr/irm/nc/ftp/sftp/scp/ssh/telnet` |
+| 纯规则 | `dispatch-core.inspectEgress({toolName, args, allowlist, tainted})`：递归收集参数里的字符串（深度 4、单串 20 000 字符、最多 200 条），提取 URL authority 比对白名单；shell 命令则按**段**分析——引号感知切分，`$(...)`/反引号/`{}`/子shell 里的内容按命令看，可执行 span 单独判定 |
+| 触发条件 | web 工具（`web_fetch` 目的地不可读→问人；`web_search` 干净轮次静默、仅污点时问）；shell 工具**且**命令里出现网络客户端、**或**命中「目的地不在参数里」的外发命令（`OPAQUE_EGRESS` 共 21 条模式、十类：git 系、包发布、docker、gh、hg/svn、rsync/scp/sftp/ssh/telnet/nc/netcat/ftp、云 CLI、BITS、数据库客户端、DNS）；解释器（`python`/`node` 等）纳入外壳扫描；`mcp__*` 外服工具一律问 |
+| 命令头归一化 | 段首的裸命令名先归一化再匹配：剥可执行后缀（`.exe/.cmd/.bat/.com/.ps1`）、剥路径前缀、剥转发外壳（`cmd /c`、`powershell -c`）、剥包裹引号，循环到稳定点。这一族是端到端抓到的真漏报（见下） |
+| 污点 | `protectedPaths`（默认七项）在**本轮**被读过 → 该会话本轮所有外发都问人，`turn/start`/`turn/end` 清空 |
 | 本机豁免 | `localhost`、`127.0.0.1`、`0.0.0.0`、`::1`、`[::1]` |
-| 白名单 | `egressAllowlist`（默认空）；支持 `.example.com` 形式的子域后缀匹配 |
+| 白名单 | `egressAllowlist`（默认空 = 每次外发都问）；支持 `.example.com` 形式的子域后缀匹配 |
 | 作用域 | 注册在 `tools.js` 的 `apply` 里 → agent 作用域，**只对影子生效** |
-| 处置 | `approval.request` 且只接受 `allowed-once`；审批服务缺失或抛错 → **拒绝**（fail closed）；被拒 → 拒绝并给出 host |
-| 不打扰 | 写文件/编辑/调遣等不触网的工具即使正文含 URL 也不问——否则日常写文档会满屏弹窗 |
+| 处置 | `approval.request` 且只接受 `allowed-once`；审批服务缺失、审批抛错、**守卫自身抛错** → 一律拒绝（fail closed） |
+| 不打扰 | 写文件/编辑/调遣等不触网的工具即使正文含 URL 也不问；数据类命令（`echo`/`git commit -m …`/构建工具）把 URL 当散文——包括带后缀的写法（`git.exe commit -m "docs: curl"`） |
 
-验证：纯核 8 项（白名单/子域/本机/凭据与端口/嵌套参数/shell 触发条件/不触网工具/**同一密钥两个目的地**）+ 集成仿真 6 项（问人后放行、被拒即停、无审批通道拒绝、白名单不问、不触网不问、审批抛错拒绝）。全部用假数据，不需要真实外发。
+验证：纯核 75 项 + 集成仿真 52 项（含「守卫自己抛错时拒绝且不弹窗」）+ 三个对抗探针（宽矩阵 0 意外、对抗 12/12、可执行后缀族 31/31 捕获 / 14/14 静默）+ 端到端首次运行的 8 个真实调用原样回归（已固化进测试）。全部用假数据，不需要真实外发。
 
-**边界（写进 README）**：不管 DNS 外泄、写文件再由他进程送出、以及守卫识别不出的 URL 拼法。它是减速带，不是证明。
+**端到端的价值（记下来）**：五轮离线排查加 75 项单测都没发现，真实环境第一趟就抓到 `curl.exe --max-time 3 host` 整族静默放行——因为测试用例全是按 Unix 习惯写的裸命令名。修法是命令头归一化。同一次运行还证明代理侧**看不到审批弹窗**（它把「被允许后正常返回」当成「没人问」，误报 3 项），所以验证提示词改成「代理报结局、操作员在会话日志里核 `approval/asked`」。
+
+**边界（写进 README）**：不管 DNS 外泄、写文件再由他进程送出、重定向外跳、脚本/别名间接、解释器非 URL 外发、以及守卫识别不出的 URL 拼法。它是减速带，不是证明。
 
 **仍然无法在产品内解决的**：沙箱三档限制的是**写**不是读（`writableRoots` 只在 `workspace-write` 下返回工作区与临时目录，`read-only` 返回空数组），所以「让影子读不到凭据」只能靠 OS 层（独立账号 / 容器 / 文件 ACL）或干脆不把长期凭据放在它运行的位置。这一条已如实写入 README 的安全警告。
 

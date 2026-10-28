@@ -256,8 +256,8 @@ npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自
 | `tests/shadow-dir.test.mjs` | 目录规则的唯一所有者：可移植默认、`~` 展开、归一化比较 |
 | `tests/host-preflight.test.mjs` | host 半边：启动预检（缺服务点名、版本可读、预检失败不拖垮插件）与权限钉住策略（默认强制覆盖 / `enforcePermissionPreset:false` 时保留用户选择） |
 | `tests/client.test.mjs` | 浏览器半边：真实 bundle 在沙箱里加载，校验 loader id、导出的 `inject`、侧栏 slot 注册、字典中英齐全，并驱动 `createShadow` 的全部返回形态（含"工作区已存在"这个曾经的回归） |
-| `tests/dispatch-core.test.mjs` | 纯判断核：身份派生、messageId、证据扫描、状态机、渲染格式 |
-| `tests/tools-sim.mjs` | 真实 `lib/tools.js` + 假宿主：投递/幂等/拒绝码/并发串行化/目录列举 |
+| `tests/dispatch-core.test.mjs` | 纯判断核：身份派生、messageId、证据扫描、状态机、渲染格式，以及**出网守卫**的完整判定（白名单/子域/本机/凭据与端口/嵌套参数；shell 段首与散文豁免、可执行 span、命令头归一化、污点、fail closed——含端到端首次运行录到的 8 个真实调用） |
+| `tests/tools-sim.mjs` | 真实 `lib/tools.js` + 假宿主：投递/幂等/拒绝码/并发串行化/目录列举，以及守卫挂在 `tools/pre-execute` 上的行为（问人后放行、被拒即停、无审批通道拒绝、审批抛错拒绝、**守卫自身抛错也拒绝且不弹窗**、白名单不问、不触网不问） |
 | `tests/patch.check.mjs` | 解析 `cordis.patch.yml`（含 `!!js`），断言影子行完好；需要 `js-yaml`（`npm install` 后即可，也可用 `JS_YAML` 指定模块路径） |
 
 仿真器用 `tests/dsh-tools-stub.mjs` 复刻官方 author-schema 校验——工具定义若在真实注册处会抛错，测试里同样会抛。
@@ -322,8 +322,9 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 - [x] 英文 README（[README.en.md](README.en.md)，两版互相链接）
 - [ ] 截图放进 README
 - [ ] 决定是否发布到 npm（不发布则只能从 git 或本地路径安装）
-- [ ] CI：至少跑 `npm test`
+- [x] CI：至少跑 `npm test`（`.github/workflows/test.yml`，ubuntu/windows × node 22/24）
 - [ ] 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
+- [x] 出网守卫端到端验证（见 [E2E-GUARD.md](E2E-GUARD.md)）：提示词、判读方法、首次运行结果表与复跑路径都已归档；最后一环（影子会话里验证修复生效）待补
 
 ---
 

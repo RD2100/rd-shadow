@@ -48,7 +48,12 @@
     "LICENSE",
     "README.md",
     "README.en.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "E2E-GUARD.md",
+    "DESIGN.md",
+    "DISPATCH-SPEC.md",
+    "DISPATCH-ABSORPTION.md",
+    "SELFTEST.md"
   ],
   "scripts": {
     "test": "node tests/run.mjs",

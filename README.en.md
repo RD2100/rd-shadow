@@ -257,8 +257,8 @@ npm run sync -- --profile <profile dir>   # copy into the profile and verify in 
 | `tests/shadow-dir.test.mjs` | The single owner of the directory rule: portable default, `~` expansion, normalized comparison |
 | `tests/host-preflight.test.mjs` | Host half: startup preflight (missing services named, version readable, preflight failure cannot break the plugin) and the pinning policy (enforce by default, or keep the user's choice with `enforcePermissionPreset:false`) |
 | `tests/client.test.mjs` | Browser half: the real bundle loaded in a sandbox verifies the loader id, the exported `inject`, the sidebar slot registration, both dictionaries, and drives `createShadow` through every result shape — including the "workspace already exists" regression |
-| `tests/dispatch-core.test.mjs` | Pure judgement core: identity derivation, messageId, evidence scan, state machine, rendering |
-| `tests/tools-sim.mjs` | The real `lib/tools.js` against a fake host: delivery, idempotency, rejection codes, per-target serialization, catalog listing |
+| `tests/dispatch-core.test.mjs` | Pure judgement core: identity derivation, messageId, evidence scan, state machine, rendering, and the **egress guard's** full decision set (allowlist, subdomains, localhost, credentials and ports, nested arguments; shell segment starts and the prose exemption, executable spans, command-head normalization, taint, fail-closed — including the 8 real calls recorded in the first end-to-end run) |
+| `tests/tools-sim.mjs` | The real `lib/tools.js` against a fake host: delivery, idempotency, rejection codes, per-target serialization, catalog listing, and the guard mounted on `tools/pre-execute` (pass after approval, stop on rejection, refuse without an approval channel, refuse when the approval throws, **refuse when the guard itself throws without prompting**, no question for allowlisted hosts, no question for offline tools) |
 | `tests/patch.check.mjs` | Parses `cordis.patch.yml` (including `!!js`) and asserts the shadow rows are intact; needs `js-yaml` (installed via `npm install`, or point `JS_YAML` at it) |
 | `scripts/pack-check.mjs` | The published artifact: every `lib/*.js` included, entry points exist, runtime imports stay inside the shipped set, a copy of only those files still passes the tools suite |
 
@@ -325,8 +325,9 @@ DISPATCH-SPEC.md     implementation spec (runtime contracts, state machine, idem
 - [ ] Screenshots in the README
 - [ ] Decide whether to publish to npm (otherwise installs come from git or a local path)
 - [x] English README
-- [ ] CI running at least `npm test`
+- [x] CI running at least `npm test` (`.github/workflows/test.yml`, ubuntu/windows × node 22/24)
 - [ ] Translate the design docs (currently Chinese only)
+- [x] End-to-end verification of the egress guard (see [E2E-GUARD.md](E2E-GUARD.md)): the prompt, the judging method, the first run's results and the re-run path are all archived; the last link (confirming the fix inside a shadow Session) is still open
 
 ---
 

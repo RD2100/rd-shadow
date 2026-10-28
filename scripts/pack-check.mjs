@@ -17,6 +17,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 
+/**
+ * The documents an installation receives. The README links to E2E-GUARD.md and
+ * the design record, so a tarball without them would ship a README pointing at
+ * files nobody has.
+ */
+const DOCS = [
+  'README.md',
+  'README.en.md',
+  'CHANGELOG.md',
+  'E2E-GUARD.md',
+  'DESIGN.md',
+  'DISPATCH-SPEC.md',
+  'DISPATCH-ABSORPTION.md',
+  'SELFTEST.md',
+]
+
 let failures = 0
 function check(name, fn) {
   try {
@@ -47,8 +63,8 @@ check('every lib/*.js is published', () => {
   if (missing.length > 0) throw new Error(`not covered by "files": ${missing.join(', ')}`)
 })
 
-check('the bundle patch, licence, and readme are published', () => {
-  for (const required of ['cordis.patch.yml', 'LICENSE', 'README.md']) {
+check('the bundle patch, licence, readme, and the linked docs are published', () => {
+  for (const required of ['cordis.patch.yml', 'LICENSE', ...DOCS]) {
     if (!covered(required)) throw new Error(`not covered by "files": ${required}`)
     if (!existsSync(path.join(ROOT, required))) throw new Error(`declared but missing on disk: ${required}`)
   }
@@ -63,7 +79,7 @@ check('every declared entry point exists and is published', () => {
 })
 
 check('runtime imports stay inside the published set', () => {
-  const published = new Set(['package.json', 'cordis.patch.yml', 'README.md', 'LICENSE', ...libFiles()])
+  const published = new Set(['package.json', 'cordis.patch.yml', ...DOCS, ...libFiles()])
   const allowedBare = new Set(['@deepseek-ai/dsh-tools', 'node:os', 'node:path', 'node:crypto', 'node:util'])
   const problems = []
   for (const relative of libFiles()) {
@@ -84,7 +100,7 @@ check('runtime imports stay inside the published set', () => {
 check('a copy of only the published files still runs the tools suite', () => {
   const staging = mkdtempSync(path.join(os.tmpdir(), 'shadow-pack-'))
   try {
-    for (const relative of ['package.json', 'cordis.patch.yml', 'LICENSE', 'README.md', ...libFiles()]) {
+    for (const relative of ['package.json', 'cordis.patch.yml', 'LICENSE', ...DOCS, ...libFiles()]) {
       const to = path.join(staging, relative)
       cpSync(path.join(ROOT, relative), to, { recursive: true })
     }
@@ -106,7 +122,7 @@ check('a copy of only the published files still runs the tools suite', () => {
 })
 
 check('the published set is not empty and stays small', () => {
-  const bytes = ['package.json', 'cordis.patch.yml', 'README.md', 'LICENSE', ...libFiles()]
+  const bytes = ['package.json', 'cordis.patch.yml', 'LICENSE', ...DOCS, ...libFiles()]
     .reduce((sum, relative) => sum + statSync(path.join(ROOT, relative)).size, 0)
   if (bytes === 0) throw new Error('published set is empty')
   console.log(`    published size: ${(bytes / 1024).toFixed(1)} KiB`)
