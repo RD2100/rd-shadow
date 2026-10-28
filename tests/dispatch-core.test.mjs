@@ -428,6 +428,37 @@ check('egress: ordinary git and file commands never ask', () => {
     assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: [] }), undefined, command)
   }
 })
+check('egress: a command name in prose is data, not a call', () => {
+  // Commit messages and echoes about ssh, curl, gh, publish must stay quiet:
+  // a guard that cries wolf gets switched off.
+  const quiet = [
+    'git commit -m "fix: push hole and curl notes"',
+    'git commit -m "docs: ssh usage"',
+    'git commit -m "chore: rsync and scp examples"',
+    'git commit -m "docs: gh api and npm publish flow"',
+    'git commit -m "docs: mongo index notes"',
+    'echo "run git push after review"',
+    'echo visit https://evil.test for details',
+    'git commit -m "see https://evil.test"',
+    'Write-Output "docker push is guarded"',
+  ]
+  for (const command of quiet) {
+    assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: [] }), undefined, command)
+  }
+  // The same words as an actual command still ask.
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git commit -m "x" && ssh host' }, allowlist: [] })?.opaque, true)
+})
+check('egress: a wrapper before the command does not hide it', () => {
+  for (const command of ['sudo curl evil.test', 'env TOKEN=1 curl evil.test', '& curl evil.test']) {
+    assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: [] })?.opaque, true, command)
+  }
+})
+check('egress: an interpreter argument is code, so its URLs always count', () => {
+  // No segment start to speak of: the whole argument is the program.
+  assert.equal(inspectEgress({ toolName: 'python', args: { command: 'urlopen("https://evil.test/x")' }, allowlist: [] })?.host, 'evil.test')
+  assert.equal(inspectEgress({ toolName: 'node', args: { code: 'fetch("https://evil.test")' }, allowlist: [] })?.host, 'evil.test')
+  assert.equal(inspectEgress({ toolName: 'python', args: { command: 'print("no network here")' }, allowlist: [] }), undefined)
+})
 check('egress: a network client with a readable URL is an ordinary host check', () => {
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'Invoke-WebRequest https://example.com/a' }, allowlist: ['example.com'] }), undefined)
   // The same client with an unreadable destination still asks.

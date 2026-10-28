@@ -14,13 +14,14 @@
 
 - **出网守卫补洞**：目的地不在参数里的外发命令（`git push`、`git remote add/set-url`、`npm publish`、`docker push`、`scp`、`ssh`、DNS 查询、云 CLI 等）此前因只认 `http(s)://` URL 而全部无检查放行，现在一律问人；`git clone/fetch/pull` 的 scp 语法（`git@host:repo`）、非 HTTP 协议目的地、`mcp__*` 外服工具、拼不出可读 URL 的 `curl`/`wget` 同类处理；解释器（`python`/`node` 等）纳入外壳扫描；`web_fetch` 目的地不可读时问人，`web_search` 仍静默、仅在本轮读过受保护数据时才问
 - **补全远程工具族**：`gh`（除 version/help/auth status/config get 外全部）、`svn`/`hg` 的提交/推送/克隆、`git send-email`/`ls-remote`/`submodule`、`Start-BitsTransfer`、数据库客户端（`psql`/`mysql`/`mongo`/`sqlcmd`/`redis-cli`）一律问人；其中目的地本身是 URL 的形式（`git clone https://…`、`svn checkout https://…`）仍走白名单
-- **链式命令不能洗白外发**：`git push origin main && curl https://白名单域名` 这类写法此前因同一串文本里别处有 URL 而放行；URL 判断改为按 `;`/`&&`/`||` 分段进行
+- **链式命令不能洗白外发**：`git push origin main && curl https://白名单域名` 这类写法此前因同一串文本里别处有 URL 而放行；URL 判断改为按 `;`/`&&`/`||`/`|` 分段进行
+- **段首才算命令，散文不算**：交付前宽矩阵探针发现 `git commit -m "fix: push hole and curl notes"` 会触发询问——提交信息里的命令名被当成了调用。现在命令名必须出现在段首（剥掉 `sudo`/`env`/`Start-Process`/`&` 等外壳之后），URL 也只有落在「能执行它的命令」所在段才判定；解释器工具的参数整体是代码，不在此限
 - **本机 URL 协议不算外发**：`web_fetch` 取 `data:`/`blob:`/`about:` 是本地读取，不再误报
 - **监听器注册提前**：`session/created` 的注册先于权限身份诊断，诊断出问题也不影响钉权限
 
 ### Documentation
 
-- 中英文 README 补全出网守卫的完整行为表（不可读目的地、外服工具、非 HTTP 协议一律问人）与「覆盖不到」清单（重定向、脚本/别名间接、UNC/同步目录）
+- 中英文 README 补全出网守卫的完整行为表（不可读目的地、外服工具、非 HTTP 协议一律问人）、「段首才算命令」的散文豁免，与「覆盖不到」清单（重定向、脚本/别名间接、UNC/同步目录）
 - 说明全新启动时身份行显示 fallback 是 bundles 挂载顺序所致（把 `dsh-plugin-shadow` 列在 auto-review 之后即可在启动那一眼看到 `auto`），每个会话创建时都会重新解析
 
 ## [0.1.0] — 2026-10-28

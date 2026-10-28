@@ -203,6 +203,7 @@ So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
 | A command naming a network client but spelling no readable URL (`curl evil.test`), or a destination on a non-HTTP protocol (`ftp://`) | **asks you** |
 | A tool served by an external server (`mcp__*`) | **asks you** — its destination is visible to it, not to this process |
 | Calls that cannot reach the network (file writes, edits, dispatch — even when their text contains URLs) | never disturbed |
+| A command name that appears only in **text** (a commit message, an echo, a comment — `git commit -m "docs: ssh usage"`) | never disturbed — only a name at a segment start (after `;`/`&&`/`||`/`|`/newline) is a command |
 
 The point: **it checks the destination, not the payload**. Base64, splitting or re-encoding the content cannot change where a request goes, so this rule cannot be bypassed; a content regex can, which is why there is no content scan.
 
