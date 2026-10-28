@@ -196,6 +196,9 @@ So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
 |---|---|
 | A web tool, or a shell command naming `curl`/`wget`/`iwr`/`ssh`… whose destination host is in `egressAllowlist` (always including `localhost`/`127.0.0.1`) | allowed |
 | Same, but the host is not listed | **asks you**, accepting only a one-time grant; refused when no approval channel exists |
+| An outbound command whose destination is not in its arguments (`git push`, `npm publish`, `docker push`, `scp`, `ssh`, DNS lookups, cloud CLIs) | **asks you** — with no host to compare, the allowlist cannot decide |
+| A command naming a network client but spelling no readable URL (`curl evil.test`), or a destination on a non-HTTP protocol (`ftp://`) | **asks you** |
+| A tool served by an external server (`mcp__*`) | **asks you** — its destination is visible to it, not to this process |
 | Calls that cannot reach the network (file writes, edits, dispatch — even when their text contains URLs) | never disturbed |
 
 The point: **it checks the destination, not the payload**. Base64, splitting or re-encoding the content cannot change where a request goes, so this rule cannot be bypassed; a content regex can, which is why there is no content scan.
@@ -214,7 +217,7 @@ Why this beats a content filter: **what it read is knowable** (the path is in th
 
 The cost, stated plainly: ordinary work is "never touched a secret → allowlisted hosts stay quiet; touched one → everything asks for the rest of that turn". That includes **a normal web fetch later in the same turn after reading `.env`**.
 
-**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder another process uploads), commands outside the network-client list such as `git push`, and URL spellings the guard cannot recognise. It is a speed bump, not a proof.
+**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder another process uploads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
 
 ---
 

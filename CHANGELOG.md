@@ -8,8 +8,12 @@
 
 - 截图放进 README
 - 决定是否发布到 npm
-- CI（至少跑 `npm test`）
 - 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
+
+### Fixed
+
+- **出网守卫补洞**：目的地不在参数里的外发命令（`git push`、`git remote add/set-url`、`npm publish`、`docker push`、`scp`、`ssh`、DNS 查询、云 CLI 等）此前因只认 `http(s)://` URL 而全部无检查放行，现在一律问人；`git clone/fetch/pull` 的 scp 语法、非 HTTP 协议目的地、`mcp__*` 外服工具、拼不出可读 URL 的 `curl`/`wget` 同类处理；解释器（`python`/`node` 等）纳入外壳扫描；`web_fetch` 目的地不可读时问人，`web_search` 仍静默、仅在本轮读过受保护数据时才问
+- **监听器注册提前**：`session/created` 的注册先于权限身份诊断，诊断出问题也不影响钉权限
 
 ## [0.1.0] — 2026-10-28
 

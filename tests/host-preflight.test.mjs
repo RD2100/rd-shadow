@@ -29,6 +29,10 @@ function makeCtx(options = {}) {
   const services = options.services ?? ['permissionPresets', 'sessions']
   const lines = []
   const applied = []
+  /** Registration and log events in call order, to prove what happens first. */
+  const order = []
+  /** How many times the catalog was read; the mount read precedes the pins. */
+  let nameReads = 0
   const events = options.recordedPreset === false ? [] : [{ type: 'permission/preset', data: { preset: 'workspace-write' } }]
   const sessions = options.sessions ?? [{
     id: 'shadow-1',
@@ -37,17 +41,20 @@ function makeCtx(options = {}) {
   }]
   const ctx = {
     logger: {
-      info: (message) => lines.push(`info ${message}`),
-      warn: (message) => lines.push(`warn ${message}`),
+      info: (message) => { lines.push(`info ${message}`); order.push(`info:${message}`) },
+      warn: (message) => { lines.push(`warn ${message}`); order.push(`warn:${message}`) },
     },
     get: (name) => (services.includes(name) ? { name } : undefined),
     inject: (required, callback) => {
       const scope = {
         logger: ctx.logger,
-        on: () => {},
+        on: (event) => order.push(`on:${event}`),
         permissionPresets: {
           get names() {
             if (options.catalogThrows !== undefined) throw new Error(options.catalogThrows)
+            // The mount read can precede the reviewer plugin's registration;
+            // every later read (each pin) sees the catalog as it stands then.
+            if (options.presetNamesAfter !== undefined && nameReads++ > 0) return options.presetNamesAfter
             return options.presetNames ?? ['auto', 'danger-full-access']
           },
           current: () => options.currentPreset ?? 'workspace-write',
@@ -59,7 +66,7 @@ function makeCtx(options = {}) {
       callback(scope)
     },
   }
-  return { ctx, lines, applied }
+  return { ctx, lines, applied, order }
 }
 
 /** A log accessor that fails, to prove the fallback keeps the user's choice. */
@@ -123,9 +130,30 @@ check('the available identity is named at mount, so "is the reviewer mounted" is
 check('a missing reviewer is reported as an unreviewed fallback, not silence', () => {
   const { ctx, lines } = makeCtx({ presetNames: ['danger-full-access'] })
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  const line = lines.find((entry) => entry.includes('no per-call review'))
+  const line = lines.find((entry) => entry.includes('permission identity danger-full-access'))
   assert.ok(line !== undefined, lines.join('\n'))
-  assert.match(line, /experimental-auto-review/)
+  // The claim is bounded to the mount instant: the reviewer is contributed by
+  // another plugin, so "not offered yet" must not read as "never offered".
+  assert.match(line, /not offered yet/)
+  assert.match(line, /each pin resolves it again/)
+})
+
+check('the listener is registered before the identity diagnostic runs', () => {
+  const { ctx, order } = makeCtx()
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  const listener = order.indexOf('on:session/created')
+  const diagnostic = order.findIndex((entry) => entry.startsWith('info:shadow: permission identity'))
+  assert.ok(listener !== -1 && diagnostic !== -1, order.join(' -> '))
+  assert.ok(listener < diagnostic, `the listener must come first: ${order.join(' -> ')}`)
+})
+
+check('a reviewer that mounts later is still pinned, not written off at mount', () => {
+  const { ctx, applied } = makeCtx({
+    presetNames: ['danger-full-access'],
+    presetNamesAfter: ['auto', 'danger-full-access'],
+  })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.deepEqual(applied, ['shadow-1:auto'], 'the pin must read the catalog again')
 })
 
 check('a runtime with neither candidate reports the identity it cannot apply', () => {

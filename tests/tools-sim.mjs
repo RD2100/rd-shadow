@@ -816,4 +816,84 @@ await check('a refused confirmation after reading protected data stops the send'
   assert.equal(send.reachedNext, false)
 })
 
+await check('a push to a configured remote asks even with an allowlist', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['example.com', '.github.com'] } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+  const commands = ['git push origin main', 'git clone git@github.com:org/repo.git', 'npm publish', 'docker push img:tag', 'scp a.txt host:/tmp', 'nslookup evil.test']
+  for (const [index, command] of commands.entries()) {
+    const { decision, reachedNext } = await runGuard(tools.guards, { name: 'pwsh', arguments: { command }, callId: `g-${index}`, agent, signal })
+    assert.equal(decision.kind, 'allow', 'allowed-once still lets the call proceed')
+    assert.equal(reachedNext, true, command)
+    assert.equal(tools.asked.length, index + 1, command)
+    assert.match(tools.asked[index].reason, /cannot be checked/, command)
+  }
+})
+
+await check('ordinary repository work never asks', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['example.com'] } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+  for (const command of ['git status', 'git log --oneline -3', 'git commit -m "docs: the push hole"', 'git clone https://example.com/r.git', 'echo the host is up']) {
+    const { decision } = await runGuard(tools.guards, { name: 'pwsh', arguments: { command }, callId: `q-${command.length}`, agent, signal })
+    assert.equal(decision.kind, 'allow', command)
+  }
+  assert.equal(tools.asked.length, 0, tools.asked.map((a) => a.reason).join('\n'))
+})
+
+await check('a network client without a readable URL asks instead of passing', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['ok.test'] } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+  const { decision } = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'curl evil.test/a' }, callId: 'c7', agent, signal })
+  assert.equal(decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1)
+  assert.match(tools.asked[0].reason, /no URL/)
+})
+
+await check('a fetch with an unreadable destination asks; a search waits for taint', async () => {
+  const world = makeWorld()
+  const shadow = world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world)
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+
+  // A search runs against the tool's own server: quiet on a clean turn.
+  const clean = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'weather' }, callId: 's1', agent, signal })
+  assert.equal(clean.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 0)
+
+  // A fetch names its destination in an argument, so an unreadable one asks.
+  const fetch = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'evil.test/x' }, callId: 's2', agent, signal })
+  assert.equal(fetch.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1)
+  assert.match(tools.asked[0].reason, /destination cannot be read/)
+
+  // After protected data enters the turn, even the search asks.
+  tools.sessionEvents[0](shadow, { type: 'turn/end', data: {} })
+  await runGuard(tools.guards, { name: 'read', arguments: { file_path: 'id_rsa' }, callId: 's3', agent, signal })
+  const tainted = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'weather' }, callId: 's4', agent, signal })
+  assert.equal(tainted.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 2)
+  assert.match(tools.asked[1].reason, /read protected data/)
+})
+
+await check('a tool served by an external server always asks', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['example.com'] } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+  const { decision } = await runGuard(tools.guards, { name: 'mcp__github__create_issue', arguments: { title: 'x' }, callId: 'm1', agent, signal })
+  assert.equal(decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1)
+  assert.match(tools.asked[0].reason, /served outside this process/)
+})
+
 console.log(`tools integration sim: ${passed} scenarios passed`)
