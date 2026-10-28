@@ -353,7 +353,7 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 
 预检（2026-10-28 核过）：包名 `dsh-plugin-shadow` 在 npm 上未被占用；`npm pack --dry-run`
 产出 16 个文件 107 kB（`lib` + patch + LICENSE + 全部文档）；`npm run pack:check` 全过；
-CI 绿；tag `v0.2.0` 已推。
+CI 绿；tag `v0.3.0` 已推。
 
 ```sh
 npm whoami                 # 未登录会报 ENEEDAUTH——发布需要维护者凭据
@@ -361,7 +361,7 @@ npm run pack:check         # 产物自足性：files 覆盖、入口存在、只
 npm publish --access public
 ```
 
-发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.2.0`；从别处
+发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.3.0`；从别处
 `npm install dsh-plugin-shadow` 后 `lib/tools.js` 可加载。
 
 安装方式（发布前也可用）：`npm install git+https://github.com/RD2100/rd-shadow.git`，
