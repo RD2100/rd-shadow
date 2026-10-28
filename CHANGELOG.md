@@ -27,6 +27,7 @@
 - **读不出的命令词不再放行（第七轮对抗排查）**：变量和字符串求值器把命令名藏在段首之外——`$c = "curl.exe"; & $c evil.test`、`& $env:ComSpec /c curl …`、`iex "curl.exe evil.test"`、`Invoke-Expression "git push"`，以及 Windows 的尾点写法 `curl.exe. evil.test`，五种拼法此前全部静默通过。现在同一命令行的赋值先解析，变量/求值器开头的段整段按命令搜索；普通未知命令词（`grep curl file`）不受影响
 - **版本/帮助查询不再打扰**：`curl --version`、`ssh -V` 这类**唯一参数**的查询不触网，不再弹窗。豁免刻意收紧：必须是唯一参数且区分大小写——`curl -v host`（verbose）、`curl -H … host`（头）、`telnet -V host`（带目的地）都照样问
 - **MCP 资源工具漏配（工具名覆盖审计）**：`read_mcp_resource`、`list_mcp_resources`、`list_mcp_resource_templates` 从 MCP 服务器读资源，而服务器可能在网络上；`REMOTE_TOOL` 只认 `mcp` 前后是双下划线的拼法，这三个单下划线的名字全部静默通过。现在按「`mcp` 作为独立字段」匹配，双下划线、连字符、单下划线三种拼法都覆盖。同轮把宿主的完整工具注册表（83 个注册点去重）读出来逐个核对，结论固化成测试：12 个能触网的工具全部问人、33 个本地工具全部静默（含参数里带 URL 的文件写/编辑）
+- **敏感数据标记改成按会话持续（此前按轮次）**：读一次 `.env` 之后，标记只维持到本轮结束，下一轮的 `web_search` 就重新静默——而读到的数据还在模型上下文里，「这轮读密钥、下轮当搜索词发出去」这条路一直是通的。现在默认 `taintScope: 'session'`，标记持续到会话结束；`taintScope: 'turn'` 可收回旧行为（用轮次间的窗口换安静）。代价写进两份 README：碰过敏感文件后，这个会话里正常的抓网页和搜索都会问，直到会话结束
 - **本机 URL 协议不算外发**：`web_fetch` 取 `data:`/`blob:`/`about:` 是本地读取，不再误报
 - **监听器注册提前**：`session/created` 的注册先于权限身份诊断，诊断出问题也不影响钉权限
 

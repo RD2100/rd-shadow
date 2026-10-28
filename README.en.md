@@ -220,13 +220,13 @@ The default allowlist is empty, so every outbound request asks. Add hosts to sto
 
 The better question is not "does this content look sensitive" but **"what did this Session just read"**. `protectedPaths` lists file names or path fragments (by default `.credentials`, `.env`, `id_rsa`, `id_ed25519`, `.pem`, `.pfx`, `secrets`).
 
-- A tool call that **mentions** one of them — reads it, lists its directory, names it in a command — marks that Session's **current turn**;
+- A tool call that **mentions** one of them — reads it, lists its directory, names it in a command — marks that Session;
 - While marked, **every outbound request asks**, even to an allowlisted host;
-- The mark clears at the turn boundary (`turn/end`, or the next `turn/start`).
+- The mark **lasts for the rest of the Session by default** (`taintScope: 'session'`): the data is still in the model's context, and a turn boundary does not un-read it, so the "read `.env` this turn, send the key as a search query next turn" path stays closed. Set `taintScope: 'turn'` if the prompts get in the way — that trades the between-turn window for the quiet.
 
 Why this beats a content filter: **what it read is knowable** (the path is in the arguments), while **what counts as sensitive is not** (the same string is a key in a config file and an example in a doc). The mark never inspects what you send — it looks at what was touched earlier — so base64 or splitting the payload cannot dodge it.
 
-The cost, stated plainly: ordinary work is "never touched a secret → allowlisted hosts stay quiet; touched one → everything asks for the rest of that turn". That includes **a normal web fetch later in the same turn after reading `.env`**.
+The cost, stated plainly: ordinary work is "never touched a secret → allowlisted hosts stay quiet; touched one → everything asks from then on". That includes **a normal web fetch or search after reading `.env`**, for the rest of the Session (or until `taintScope` is set to `turn`). That is deliberate: better one prompt too many than a window for "read now, send next turn".
 
 **What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **script or alias indirection** (`npm run release` that is really a publish, a git alias `pu` for push — the arguments do not show the real action), an interpreter sending without a URL (`python -c "os.system('ssh host')"` — neither the destination nor the client name sits where the guard reads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
 

@@ -789,7 +789,7 @@ await check('an approval that throws denies instead of allowing', async () => {
   assert.match(decision.reason, /could not ask about evil\.test/)
 })
 
-await check('reading protected data raises the bar for the rest of the turn', async () => {
+await check('reading protected data raises the bar for the rest of the session', async () => {
   const world = makeWorld()
   const shadow = world.addSession('shadow-1', SHADOW_DIR)
   const tools = mount(world, { config: { egressAllowlist: ['ok.test'] } })
@@ -801,7 +801,7 @@ await check('reading protected data raises the bar for the rest of the turn', as
   assert.equal(before.decision.kind, 'allow')
   assert.equal(tools.asked.length, 0)
 
-  // 2. Reading a protected path marks the turn.
+  // 2. Reading a protected path marks the session.
   const reading = await runGuard(tools.guards, { name: 'read', arguments: { file_path: 'D:\\DSH\\.DSH\\.credentials.yaml' }, callId: 'c2', agent, signal })
   assert.equal(reading.decision.kind, 'allow', 'reading itself is never blocked')
   assert.equal(tools.asked.length, 0)
@@ -812,12 +812,33 @@ await check('reading protected data raises the bar for the rest of the turn', as
   assert.match(tools.asked[0].reason, /read protected data/)
   assert.equal(after.decision.kind, 'allow', 'allowed-once still lets it through')
 
-  // 4. The turn boundary clears the mark.
+  // 4. The turn boundary does NOT clear the mark by default: the data is still
+  //    in the model's context, so a later turn is the same exposure. This is
+  //    the two-turn path — read a key, search with it next turn — that the
+  //    per-turn scope used to pass in silence.
   assert.equal(tools.sessionEvents.length, 1)
   tools.sessionEvents[0](shadow, { type: 'turn/end', data: {} })
   const later = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 'c4', agent, signal })
+  assert.equal(tools.asked.length, 2, 'the mark outlives the turn')
   assert.equal(later.decision.kind, 'allow')
-  assert.equal(tools.asked.length, 1, 'no new prompt after the turn ended')
+})
+
+await check('taintScope: turn narrows the protected mark back to one turn', async () => {
+  const world = makeWorld()
+  const shadow = world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['ok.test'], taintScope: 'turn' } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+
+  await runGuard(tools.guards, { name: 'read', arguments: { file_path: 'D:\\DSH\\.DSH\\.credentials.yaml' }, callId: 't1', agent, signal })
+  const same = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 't2', agent, signal })
+  assert.equal(tools.asked.length, 1, 'the same turn still asks')
+
+  tools.sessionEvents[0](shadow, { type: 'turn/end', data: {} })
+  const next = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 't3', agent, signal })
+  assert.equal(next.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1, 'the boundary clears it again')
+  assert.equal(same.decision.kind, 'allow')
 })
 
 await check('a refused confirmation after reading protected data stops the send', async () => {
@@ -898,6 +919,13 @@ await check('a fetch with an unreadable destination asks; a search waits for tai
   assert.equal(tainted.decision.kind, 'allow')
   assert.equal(tools.asked.length, 2)
   assert.match(tools.asked[1].reason, /read protected data/)
+
+  // And it keeps asking in the next turn: the query is the exfiltration
+  // channel, and a turn boundary does not un-read the key.
+  tools.sessionEvents[0](shadow, { type: 'turn/end', data: {} })
+  const nextTurn = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'weather' }, callId: 's5', agent, signal })
+  assert.equal(nextTurn.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 3, 'a search in a later turn still asks')
 })
 
 await check('a tool served by an external server always asks', async () => {
