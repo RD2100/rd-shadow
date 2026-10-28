@@ -249,7 +249,7 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 
 **推荐的搭配**：配了诱饵之后，就可以把 `taintScope` 设回 `turn`——真正重要的那条路（真密钥出去）由诱饵守着，误报还低；宽泛的路径标记只负责兜住"说不清是什么的敏感数据"，窗口收窄到一轮，吵声立刻下来。
 
-**这条规则覆盖不到**：绕开 HTTP 的通道（DNS 外泄、写到同步目录或 UNC 路径再由别的程序送出）、**重定向**（白名单域名 302 到别处，守卫只看初始 URL）、**脚本/别名间接**（`npm run release` 背后才是 publish、git 别名 `pu`=push，参数里看不出真正动作）、解释器用非 URL 方式发出的请求（`python -c "os.system('ssh host')"`——目的地不在参数里，客户端名也不在段首）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
+**这条规则覆盖不到**：绕开 HTTP 的通道（DNS 外泄、写到同步目录或 UNC 路径再由别的程序送出）、**重定向**（白名单域名 302 到别处，守卫只看初始 URL）、**跨调用的间接**（别名/函数/脚本在上一次调用里定义、这一次调用才用；同一命令行内的 `$c = "curl"; & $c …`、`Set-Alias x curl; x …`、`function x { & curl @args }; x …` 都按调用判定，脚本文件与 `npm run` 后面的动作仍然看不出来）、解释器用非 URL 方式发出的请求（`python -c "os.system('ssh host')"`——目的地不在参数里，客户端名也不在段首）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
 ---
 
 ## 已知限制
@@ -353,7 +353,7 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 
 预检（2026-10-28 核过）：包名 `dsh-plugin-shadow` 在 npm 上未被占用；`npm pack --dry-run`
 产出 16 个文件 107 kB（`lib` + patch + LICENSE + 全部文档）；`npm run pack:check` 全过；
-CI 绿；tag `v0.3.0` 已推。
+CI 绿；tag `v0.4.0` 已推。
 
 ```sh
 npm whoami                 # 未登录会报 ENEEDAUTH——发布需要维护者凭据
@@ -361,7 +361,7 @@ npm run pack:check         # 产物自足性：files 覆盖、入口存在、只
 npm publish --access public
 ```
 
-发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.3.0`；从别处
+发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.4.0`；从别处
 `npm install dsh-plugin-shadow` 后 `lib/tools.js` 可加载。
 
 安装方式（发布前也可用）：`npm install git+https://github.com/RD2100/rd-shadow.git`，

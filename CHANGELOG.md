@@ -4,7 +4,20 @@
 
 ## [Unreleased]
 
-### 待办（0.3.0 之后）
+### Added
+
+- **变异模糊测试（`tests/fuzz.mjs`）**：从语法维度生成伪装写法（客户端拼法 × 包装外壳 × 间接方式 × 目的地写法），只断言一条不变量——**会触网的调用绝不静默**。另一半同样重要：本地命令必须静默，否则"永远问人"也能通过——而一个被训练成无脑点允许的守卫等于没有守卫。种子化，CI 失败可本地复现。手写探针一轮只能想到十几种拼法，这个一次跑几千种
+
+### Fixed
+
+- **命令行自我定义的名字（4 类）**：`Set-Alias x curl; x evil.test`、`alias x=curl; x …`、`New-Alias`、`function x { & curl @args }; x …` 此前全部静默——命令名只出现在定义里，锚定模式看不见。现在按同一命令行解析（和变量赋值同一套机制）；定义被分隔符拆开时（`function` 体里的 `&`）在完整命令文本上扫描
+- **转发外壳的选项**：`env curl evil.test`（不带赋值时 `env` 不被剥）、`nice -n 10 curl …`、`timeout -s KILL 30 curl …`、`env -u HOME curl …`、`sudo -u root curl …` 此前静默。取值型短选项连值一起跳过；`command -v curl` 是查表不是运行，仍静默
+- **可执行 span 整段漏掉**：span 扫描的正则把括号排除在字符类外，所以 `echo $(node -e "fetch('https://evil.test/')")` 这种**真实外发形态**整个被跳过（span 内容自带括号）。改为按括号配平扫描，并用引号状态区分含义：`$( … )` 在双引号内仍执行，`{ … }` 在任何引号内都是数据
+- **读不出的命令词里带后缀或引号**：`Invoke-Expression "npm.exe publish"`、`$r = "gh.exe" release create v1` 此前静默——在字符串中间搜索时，锚定模式的 `(?:\s|$)` 吸收不了 `.exe` 或赋值留下的引号。搜索前先剥后缀与引号
+- **赋值语句的命令头**：`$r = "git" push origin main` 被"解析"成 `git = "git" push …`——一条谁都匹配不上的字符串。赋值语句不是调用，跳过解析
+- **三处误报**：引号内的 `{ … }`（`git commit -m "function y { curl }"`）曾被当成可执行块；`Set-Alias x curl; x host` 的裸值把分号一起捕获（`curl;`）；写入提交信息的别名定义曾让后续命令看起来是外发
+
+### 待办（0.4.0 之后）
 
 - 截图放进 README
 - 决定是否发布到 npm（版本已就绪：`npm pack` 检查通过，见 `scripts/pack-check.mjs`）

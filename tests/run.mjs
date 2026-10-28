@@ -20,6 +20,11 @@ const suites = [
   { label: 'host-preflight', args: [path.join(TESTS, 'host-preflight.test.mjs')] },
   { label: 'client', args: [path.join(TESTS, 'client.test.mjs')] },
   { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
+  // The fuzz generates the spellings the hand-written suites would have to
+  // think of, and asserts both halves: a call that reaches the network is never
+  // silent, and a command that cannot is never asked about. Deterministic, so a
+  // failure in CI reproduces locally from the printed seed.
+  { label: 'fuzz', args: [path.join(TESTS, 'fuzz.mjs')] },
   { label: 'tools-sim', args: ['--import', pathToFileURL(path.join(TESTS, 'register.mjs')).href, path.join(TESTS, 'tools-sim.mjs')] },
   { label: 'patch', args: [path.join(TESTS, 'patch.check.mjs')] },
   { label: 'pack', args: [path.join(ROOT, 'scripts', 'pack-check.mjs')] },

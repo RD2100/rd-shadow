@@ -249,7 +249,7 @@ Its boundary, stated plainly: **a canary only sees the value when it is written 
 
 **Recommended combination**: once a canary is planted, set `taintScope` back to `turn`. The path that actually matters (the real key leaving) is now watched precisely, with almost no false positives; the broad path-triggered mark only has to catch "sensitive data we cannot name", and a one-turn window keeps the prompts down.
 
-**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **script or alias indirection** (`npm run release` that is really a publish, a git alias `pu` for push — the arguments do not show the real action), an interpreter sending without a URL (`python -c "os.system('ssh host')"` — neither the destination nor the client name sits where the guard reads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
+**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **indirection across calls** (an alias, function, or script defined in one call and used in a later one; inside a single command line `$c = "curl"; & $c …`, `Set-Alias x curl; x …`, and `function x { & curl @args }; x …` are all judged as the call they make, but a script file and whatever `npm run` does behind its name still are not), an interpreter sending without a URL (`python -c "os.system('ssh host')"` — neither the destination nor the client name sits where the guard reads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
 
 ---
 
@@ -356,7 +356,7 @@ DISPATCH-SPEC.md     implementation spec (runtime contracts, state machine, idem
 
 Pre-flight (checked 2026-10-28): the name `dsh-plugin-shadow` is free on npm; `npm pack --dry-run`
 produces 16 files / 107 kB (`lib` + patch + LICENSE + every doc); `npm run pack:check` passes;
-CI is green; the `v0.3.0` tag is pushed.
+CI is green; the `v0.4.0` tag is pushed.
 
 ```sh
 npm whoami                 # ENEEDAUTH when not logged in — publishing needs maintainer credentials
@@ -364,7 +364,7 @@ npm run pack:check         # artifact self-sufficiency: files coverage, entry po
 npm publish --access public
 ```
 
-After publishing: `npm view dsh-plugin-shadow version` returns `0.3.0`, and a fresh
+After publishing: `npm view dsh-plugin-shadow version` returns `0.4.0`, and a fresh
 `npm install dsh-plugin-shadow` elsewhere can load `lib/tools.js`.
 
 Installing (also works before publishing): `npm install git+https://github.com/RD2100/rd-shadow.git`,
