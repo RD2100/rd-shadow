@@ -213,7 +213,8 @@ npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自
 | 套件 | 覆盖 |
 |---|---|
 | `tests/shadow-dir.test.mjs` | 目录规则的唯一所有者：可移植默认、`~` 展开、归一化比较 |
-| `tests/host-preflight.test.mjs` | host 半边启动预检：生效目录、缺失服务被指名、版本不匹配可读、预检自身出错不影响插件 |
+| `tests/host-preflight.test.mjs` | host 半边：启动预检（缺服务点名、版本可读、预检失败不拖垮插件）与权限钉住策略（默认强制覆盖 / `enforcePermissionPreset:false` 时保留用户选择） |
+| `tests/client.test.mjs` | 浏览器半边：真实 bundle 在沙箱里加载，校验 loader id、导出的 `inject`、侧栏 slot 注册、字典中英齐全，并驱动 `createShadow` 的全部返回形态（含"工作区已存在"这个曾经的回归） |
 | `tests/dispatch-core.test.mjs` | 纯判断核：身份派生、messageId、证据扫描、状态机、渲染格式 |
 | `tests/tools-sim.mjs` | 真实 `lib/tools.js` + 假宿主：投递/幂等/拒绝码/并发串行化/目录列举 |
 | `tests/patch.check.mjs` | 解析 `cordis.patch.yml`（含 `!!js`），断言影子行完好；需要 `js-yaml`（`npm install` 后即可，也可用 `JS_YAML` 指定模块路径） |

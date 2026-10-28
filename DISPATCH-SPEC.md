@@ -444,7 +444,8 @@ reason: <原因>                                      （rejected/unknown 时）
 | `tests/dsh-tools-stub.mjs` | 复刻官方 author-schema 校验（每类节点的关键字白名单、object 必须显式 `additionalProperties`、`required` 必须为 true）——工具定义若在真实注册处会抛错，这里同样抛 | 内建于 sim |
 | `tests/run.mjs` | 依次跑各套件；`--deployed` 额外对 profile 副本再跑一遍 sim。缺 js-yaml 时 patch 检查自报跳过 | `node tests/run.mjs` |
 | `tests/shadow-dir.test.mjs` | 6 项：可移植默认在 home 下、不泄漏开发机路径、`~` 展开、空白/非字符串处理、归一化比较 | 6 passed |
-| `tests/host-preflight.test.mjs` | 6 项：生效目录日志、齐全时不告警、缺服务被指名、版本号可读、预检异常不影响插件、目录外会话不被碰 | 6 passed |
+| `tests/host-preflight.test.mjs` | 10 项：生效目录日志、齐全时不告警、缺服务被指名、版本号可读、预检异常不影响插件、目录外会话不被碰，以及权限钉住策略四例（默认强制覆盖 / 关闭后保留用户选择 / 关闭仍钉无记录会话 / 日志不可读时保守跳过） | 10 passed |
+| `tests/client.test.mjs` | 11 项：在 `node:vm` 沙箱里加载**真实**浏览器 bundle，校验 loader id 与导出、侧栏 slot 与字典、`createShadow` 的每种 adopt 返回形态（含 `ok:false` 携带实体这个回归）、无身份时报错、模型钉住失败不阻塞、缺 `shadowDir` 时报错、导航缺失时报错 | 11 passed |
 | `tests/deployed-imports.mjs` | 真的导入已安装副本的四个入口并核对导出——半同步（一个文件引用了另一个文件还没有的导出）会立刻暴露，而不是等到运行时 `did not activate` | 4 entries ok |
 
 包内入口：`npm test`（= `node tests/run.mjs`）。预览部署副本需设 `SHADOW_PROFILE_TOOLS` 指向已安装的 `lib/tools.js`；patch 检查需要 `JS_YAML` 指向一个 js-yaml 模块（本机可取 `D:\DSH\.tmp-inherit\js-yaml.cjs`，它是从 asar 里提取的官方依赖）。

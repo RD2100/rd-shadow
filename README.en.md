@@ -213,7 +213,8 @@ npm run sync -- --profile <profile dir>   # copy into the profile and verify in 
 | Suite | Covers |
 |---|---|
 | `tests/shadow-dir.test.mjs` | The single owner of the directory rule: portable default, `~` expansion, normalized comparison |
-| `tests/host-preflight.test.mjs` | Host startup preflight: effective directory, missing services named, version mismatch readable, preflight failure cannot break the plugin |
+| `tests/host-preflight.test.mjs` | Host half: startup preflight (missing services named, version readable, preflight failure cannot break the plugin) and the pinning policy (enforce by default, or keep the user's choice with `enforcePermissionPreset:false`) |
+| `tests/client.test.mjs` | Browser half: the real bundle loaded in a sandbox verifies the loader id, the exported `inject`, the sidebar slot registration, both dictionaries, and drives `createShadow` through every result shape — including the "workspace already exists" regression |
 | `tests/dispatch-core.test.mjs` | Pure judgement core: identity derivation, messageId, evidence scan, state machine, rendering |
 | `tests/tools-sim.mjs` | The real `lib/tools.js` against a fake host: delivery, idempotency, rejection codes, per-target serialization, catalog listing |
 | `tests/patch.check.mjs` | Parses `cordis.patch.yml` (including `!!js`) and asserts the shadow rows are intact; needs `js-yaml` (installed via `npm install`, or point `JS_YAML` at it) |

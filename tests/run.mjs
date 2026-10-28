@@ -18,6 +18,7 @@ const DEPLOYED = process.env.SHADOW_PROFILE_TOOLS
 const suites = [
   { label: 'shadow-dir', args: [path.join(TESTS, 'shadow-dir.test.mjs')] },
   { label: 'host-preflight', args: [path.join(TESTS, 'host-preflight.test.mjs')] },
+  { label: 'client', args: [path.join(TESTS, 'client.test.mjs')] },
   { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
   { label: 'tools-sim', args: ['--import', pathToFileURL(path.join(TESTS, 'register.mjs')).href, path.join(TESTS, 'tools-sim.mjs')] },
   { label: 'patch', args: [path.join(TESTS, 'patch.check.mjs')] },
