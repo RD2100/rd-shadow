@@ -329,6 +329,25 @@ DISPATCH-SPEC.md     implementation spec (runtime contracts, state machine, idem
 - [ ] Translate the design docs (currently Chinese only)
 - [x] End-to-end verification of the egress guard (see [E2E-GUARD.md](E2E-GUARD.md)): the prompt, the judging method, the first run's results and the re-run path are all archived; the last link (confirming the fix inside a shadow Session) is still open
 
+### Publishing to npm
+
+Pre-flight (checked 2026-10-28): the name `dsh-plugin-shadow` is free on npm; `npm pack --dry-run`
+produces 16 files / 107 kB (`lib` + patch + LICENSE + every doc); `npm run pack:check` passes;
+CI is green; the `v0.2.0` tag is pushed.
+
+```sh
+npm whoami                 # ENEEDAUTH when not logged in — publishing needs maintainer credentials
+npm run pack:check         # artifact self-sufficiency: files coverage, entry points, runs from a copy
+npm publish --access public
+```
+
+After publishing: `npm view dsh-plugin-shadow version` returns `0.2.0`, and a fresh
+`npm install dsh-plugin-shadow` elsewhere can load `lib/tools.js`.
+
+Installing (also works before publishing): `npm install git+https://github.com/RD2100/rd-shadow.git`,
+or put the repository path straight into the profile's bundles. For local development use
+`npm run sync -- --profile <profile dir>`.
+
 ---
 
 ## License

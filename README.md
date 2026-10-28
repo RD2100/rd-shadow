@@ -326,6 +326,24 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 - [ ] 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
 - [x] 出网守卫端到端验证（见 [E2E-GUARD.md](E2E-GUARD.md)）：提示词、判读方法、首次运行结果表与复跑路径都已归档；最后一环（影子会话里验证修复生效）待补
 
+### 发布到 npm 的步骤
+
+预检（2026-10-28 核过）：包名 `dsh-plugin-shadow` 在 npm 上未被占用；`npm pack --dry-run`
+产出 16 个文件 107 kB（`lib` + patch + LICENSE + 全部文档）；`npm run pack:check` 全过；
+CI 绿；tag `v0.2.0` 已推。
+
+```sh
+npm whoami                 # 未登录会报 ENEEDAUTH——发布需要维护者凭据
+npm run pack:check         # 产物自足性：files 覆盖、入口存在、只复制这些也能跑
+npm publish --access public
+```
+
+发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.2.0`；从别处
+`npm install dsh-plugin-shadow` 后 `lib/tools.js` 可加载。
+
+安装方式（发布前也可用）：`npm install git+https://github.com/RD2100/rd-shadow.git`，
+或把仓库路径直接写进 profile 的 bundles。本机开发用 `npm run sync -- --profile <profile 目录>`。
+
 ---
 
 ## 许可
