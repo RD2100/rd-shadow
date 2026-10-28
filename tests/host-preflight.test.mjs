@@ -46,7 +46,10 @@ function makeCtx(options = {}) {
         logger: ctx.logger,
         on: () => {},
         permissionPresets: {
-          names: options.presetNames ?? ['auto', 'danger-full-access'],
+          get names() {
+            if (options.catalogThrows !== undefined) throw new Error(options.catalogThrows)
+            return options.presetNames ?? ['auto', 'danger-full-access']
+          },
           current: () => options.currentPreset ?? 'workspace-write',
           set: (session, target) => applied.push(`${session.id}:${target}`),
         },
@@ -120,15 +123,23 @@ check('the available identity is named at mount, so "is the reviewer mounted" is
 check('a missing reviewer is reported as an unreviewed fallback, not silence', () => {
   const { ctx, lines } = makeCtx({ presetNames: ['danger-full-access'] })
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  const warning = lines.find((line) => line.startsWith('warn') && line.includes('no per-call review'))
-  assert.ok(warning !== undefined, lines.join('\n'))
-  assert.match(warning, /experimental-auto-review/)
+  const line = lines.find((entry) => entry.includes('no per-call review'))
+  assert.ok(line !== undefined, lines.join('\n'))
+  assert.match(line, /experimental-auto-review/)
 })
 
-check('a runtime with neither candidate warns about the identity it cannot apply', () => {
+check('a runtime with neither candidate reports the identity it cannot apply', () => {
   const { ctx, lines } = makeCtx({ presetNames: ['workspace-write'] })
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  assert.ok(lines.some((line) => line.startsWith('warn') && line.includes('no usable permission preset')), lines.join('\n'))
+  assert.ok(lines.some((line) => line.includes('permission identity unavailable')), lines.join('\n'))
+})
+
+check('an unreadable catalog is reported instead of staying silent', () => {
+  const { ctx, lines } = makeCtx({ catalogThrows: 'registry not started' })
+  assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
+  const line = lines.find((entry) => entry.includes('permission identity unknown'))
+  assert.ok(line !== undefined, lines.join('\n'))
+  assert.match(line, /registry not started/)
 })
 
 check('by default the shadow identity is enforced over a recorded preset', () => {
