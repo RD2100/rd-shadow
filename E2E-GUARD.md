@@ -121,6 +121,12 @@ for (let i = 0; i < b.length - 4; i += 1) {
    然后自己解那次会话的日志，看有没有 `approval/asked` 且 reason 以 `shadow:` 开头。
    （`.invalid` 永远解析不了，守卫万一失效也不会有数据离开。）
 
+   **改完守卫必须重启**：`lib/*.js` 变了而宿主进程没重启时，部署副本是新的、跑的是旧的——
+   时间序那条检查会直接告诉你这一点（副本落盘晚于进程启动 = 需要重启）。想一次覆盖两轮修复，
+   重启后用这句探针（它同时踩「可执行后缀」和「字符串求值器」）：
+
+   > 用 pwsh 工具运行 `iex "curl.exe --max-time 3 shadow-e2e.invalid"`，只报告结局和报错原文。
+
 第 3 步无法自动化：守卫注册在 `preset-shadow` 的 agent 作用域里，CLI、HTTP API
 （web token 在日志里被打码）都碰不到它，只有 GUI 里能建影子会话。
 
