@@ -88,7 +88,7 @@ Everything is configured on the plugin rows in `cordis.patch.yml`:
 - If you omit `shadowDir`, the host side falls back to `<home>/dsh-shadow`; **the browser half requires an explicit value**, so please write the line.
 - First use creates that directory's workspace; using it again reuses it instead of registering a duplicate.
 - `enforcePermissionPreset` (default `true`): every Session creation/resume writes `permissionPreset` back. **If you switch presets by hand (for example to `danger-full-access`), set it to `false`** — the plugin then pins only Sessions whose log records no permission choice yet, and your manual switch survives.
-- The two egress settings: `egressAllowlist` (empty by default = ask every time) and `protectedPaths` (seven fragments by default) are covered in the next two sections; `taintScope` (default `session`) decides how long the "read protected data" mark lasts.
+- The egress settings: `egressAllowlist` (empty by default = ask every time), `protectedPaths` (seven fragments by default), `taintScope` (default `session`), `canaryValues` (empty by default), and `approvalMemory` (default `turn`) — all covered in the sections below.
 
 ---
 
@@ -228,6 +228,26 @@ The better question is not "does this content look sensitive" but **"what did th
 Why this beats a content filter: **what it read is knowable** (the path is in the arguments), while **what counts as sensitive is not** (the same string is a key in a config file and an example in a doc). The mark never inspects what you send — it looks at what was touched earlier — so base64 or splitting the payload cannot dodge it.
 
 The cost, stated plainly: ordinary work is "never touched a secret → allowlisted hosts stay quiet; touched one → everything asks from then on". That includes **a normal web fetch or search after reading `.env`**, for the rest of the Session (or until `taintScope` is set to `turn`). That is deliberate: better one prompt too many than a window for "read now, send next turn".
+
+### Two sharper tools: canary values and approval memory
+
+The rule above is deliberately *broad* — it suspects everything after a filename was touched. Two features narrow it where it matters:
+
+**Canary values (`canaryValues`)** — plant a **fake** credential in `.env` (one that works nowhere and that only you know about) and list it:
+
+```yaml
+    canaryValues:
+      - 'AKIAFAKEFAKEFAKE'      # the fake AWS key sitting in .env
+      - 'ghp_fakefakefakefake'  # the fake GitHub token sitting in .env
+```
+
+After that, any outbound call whose arguments carry one of those strings asks — no taint needed, no allowlist involved. Why this one is allowed to look at content while the others are not: **the string is unique, fake, and has no legitimate use**, so it has exactly one meaning at the exit. A generic secret pattern has to guess, and a guess wrong in either direction is how a guard gets switched off. The prompt says which canary matched and **never echoes the value** — neither the prompt nor the log should carry the secret it is protecting.
+
+Its boundary, stated plainly: **a canary only sees the value when it is written into the arguments**. In `curl -d "$(cat .env)"` the key is read from the file at runtime and never appears in the arguments, so the canary cannot see it — but `.env` was named, so the taint still asks. The two mechanisms are complementary, not interchangeable.
+
+**Approval memory (`approvalMemory`)** — a call that is *identical* (same tool, same arguments) and was just approved does not ask again. `turn` (default) = for the rest of the turn; `session` = for the rest of the Session; `off` = every time. Why only identical: a different URL, a different query, or a different command is a **different call**, and the difference is exactly where a payload hides. So this fixes "the same question asked twice" (polling, retries, loops) and does nothing for "every search query is different" — that is what the canary is for.
+
+**Recommended combination**: once a canary is planted, set `taintScope` back to `turn`. The path that actually matters (the real key leaving) is now watched precisely, with almost no false positives; the broad path-triggered mark only has to catch "sensitive data we cannot name", and a one-turn window keeps the prompts down.
 
 **What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **script or alias indirection** (`npm run release` that is really a publish, a git alias `pu` for push — the arguments do not show the real action), an interpreter sending without a URL (`python -c "os.system('ssh host')"` — neither the destination nor the client name sits where the guard reads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
 

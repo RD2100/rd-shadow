@@ -637,8 +637,9 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 | 读不出的命令词 | 段首是变量或字符串求值器（`$c`、`$env:ComSpec`、`iex`、`Invoke-Expression`）时，命令不在段首：先解析同一命令行的赋值（`$c = "curl.exe"; & $c host` 解析成 curl 调用），再整段搜索命令名。普通未知命令词（`grep curl file`）不搜——守卫读不全世界的命令名，搜了就会对"在文件里搜 curl"提问 |
 | 版本/帮助豁免 | 客户端的**唯一参数**是 `--version`/`--help`/`-V`/`-h`/`-?` 时不问（不触网）。必须是唯一参数且区分大小写：`curl -v host`（verbose）、`curl -H … host`（头）、`telnet -V host`（带目的地）都照旧问 |
 | 污点作用域 | 提到 `protectedPaths` 里任一片段的调用把会话标记，之后所有外发（含白名单目标）都要问人。作用域默认 `session`：数据还在上下文里，轮次边界不会让它被忘掉，「这轮读密钥、下轮当搜索词发」因此是堵着的；`taintScope: 'turn'` 收回轮级窗口换安静 |
+| 诱饵密钥 | `canaryValues` 里逐串精确匹配（大小写敏感、子串），出现在任何**外发**调用的参数里就一律问人——不需要污点、不过白名单。这是守卫唯一读取内容的地方，理由是这串字符唯一、假、无正当用途，出口出现只有一种解释；通用密钥正则必须"猜"，猜错任一方向都是关掉守卫的理由。提示只报"第几条诱饵"（`canary #N`），**不回显字符本身**——提示会进 UI 和会话日志。**边界**：只有出现在参数里才看得见，`curl -d "$(cat .env)"` 这种运行时读文件的写法它看不见（由污点兜住），所以两条机制互补而非替代。非外发工具（`write`/`read`）在判定之前就返回，所以本地写诱饵不算 |
+| 审批记忆 | 同一个调用（工具名 + 参数稳定序列化后的 FNV-1a 哈希）批准过，窗口期内不再问：`turn`（默认）/ `session` / `off`。只记**完全一致**的调用——URL、查询词、命令任一不同就是不同调用，差别正是载荷能藏身的地方。所以它治"同一个问题问两遍"（轮询/重试/循环），不治"每次查询都不同"的搜索，后者靠诱饵 |
 | 工具名覆盖 | 守卫只对它认得出的工具名作答，所以「名字漏配」本身就是漏报。注册表事实（2026-10-28 从 app.asar 逐个包读出，83 个注册点去重）已固化成测试：能触网的是 shell 系（`pwsh`/`bash` 及 `_persistent` 变体）、终端系（`terminal_open/send/read/close/list/signal`——`terminal_send` 就是带会话 id 的 `pwsh`）、web 系（`web_fetch`/`web_search`）、MCP 系（`mcp__srv__tool` 双下划线、`mcp-srv` 连字符、以及 `read_mcp_resource`/`list_mcp_resources`/`list_mcp_resource_templates` 单下划线——最后三个第一版漏了，见下）。其余工具（文件、会话查询、cordis 检查、worktree、子代理、ralph、本插件自己的 `shadow_dispatch`/`shadow_inspect`/`shadow_targets`）都是本地的，即使参数里带 URL 也静默 |
-| 污点 | `protectedPaths`（默认七项）在**本轮**被读过 → 该会话本轮所有外发都问人，`turn/start`/`turn/end` 清空 |
 | 本机豁免 | `localhost`、`127.0.0.1`、`0.0.0.0`、`::1`、`[::1]` |
 | 白名单 | `egressAllowlist`（默认空 = 每次外发都问）；支持 `.example.com` 形式的子域后缀匹配 |
 | 作用域 | 注册在 `tools.js` 的 `apply` 里 → agent 作用域，**只对影子生效** |
