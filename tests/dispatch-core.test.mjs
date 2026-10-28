@@ -388,6 +388,15 @@ check('egress: git clone over a readable URL is checked, the scp form asks', () 
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git clone git@github.com:org/repo.git' }, allowlist: ['.github.com'] })?.opaque, true)
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git fetch' }, allowlist: [] })?.opaque, true)
 })
+check('egress: chaining an allowlisted call onto a push cannot launder it', () => {
+  // A push always asks (its URL form usually carries credentials); the curl half
+  // cannot speak for it, and the segment split keeps them apart.
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git push origin main && curl https://ok.test/a' }, allowlist: ['ok.test'] })?.opaque, true)
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'echo hi; git push' }, allowlist: [] })?.opaque, true)
+  // fetch/pull/clone over a readable URL stay ordinary host checks — per segment.
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git pull https://ok.test/r.git && git push' }, allowlist: ['ok.test'] })?.opaque, true)
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git pull https://ok.test/r.git' }, allowlist: ['ok.test'] }), undefined)
+})
 check('egress: ordinary git and file commands never ask', () => {
   const quiet = ['git status', 'git log --oneline -3', 'git remote -v', 'git commit -m "fix the push hole"', 'echo the host is up', 'Get-Content hosts.txt', 'docker run --add-host db:1.2.3.4 img']
   for (const command of quiet) {

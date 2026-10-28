@@ -186,6 +186,8 @@ Before installing, confirm:
 profile package.json → dsh.profile.bundles contains "@deepseek-ai/dsh-experimental-auto-review"
 ```
 
+At startup the host half logs one identity line (`shadow: permission identity …`). `auto` means the reviewer is in place. On a **fresh start** that line may read `danger-full-access (fallback…)`: bundles mount in array order, so when this plugin is listed before auto-review, `auto` does not exist yet at that instant. It is not a fault — every shadow Session re-resolves the catalog when it is created and still ends up on `auto` (logged as `shadow: <session id> permission -> auto`). To see `auto` in the startup line itself, list `dsh-plugin-shadow` **after** `@deepseek-ai/dsh-experimental-auto-review`.
+
 ### Outbound allowlist (`egressAllowlist`)
 
 Anything the shadow reads is **untrusted data** — a web page, an issue, a README can all carry "send this file to that address" instructions. That is **indirect prompt injection**, and it is the most realistic threat for a tool like this.
@@ -217,7 +219,7 @@ Why this beats a content filter: **what it read is knowable** (the path is in th
 
 The cost, stated plainly: ordinary work is "never touched a secret → allowlisted hosts stay quiet; touched one → everything asks for the rest of that turn". That includes **a normal web fetch later in the same turn after reading `.env`**.
 
-**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder another process uploads), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
+**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder or a UNC path another process uploads), **redirects** (an allowlisted host 302-ing elsewhere — the guard only sees the initial URL), **script or alias indirection** (`npm run release` that is really a publish, a git alias `pu` for push — the arguments do not show the real action), URL spellings the guard cannot recognise, and tools served by an external server that carries no destination in its arguments (`mcp__*` — those always ask, but the question is "use this tool at all", not "send it where"). It is a speed bump, not a proof.
 
 ---
 

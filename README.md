@@ -186,6 +186,8 @@ flowchart LR
 profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experimental-auto-review"
 ```
 
+启动时host半边会在日志里打一行身份（`shadow: permission identity …`）。如果显示 `auto`，评审在位。**全新启动的那一刻**这行可能显示 `danger-full-access (fallback…)`——因为 bundles 数组按顺序挂载，本插件列在 auto-review 之前时，挂载瞬间 `auto` 还没注册；这不是故障，每个影子会话创建时都会重新解析，最终拿到的仍是 `auto`（日志里对应 `shadow: <会话 id> permission -> auto`）。想让启动那一眼就看到 `auto`，把 `dsh-plugin-shadow` 列到 `@deepseek-ai/dsh-experimental-auto-review` **之后**即可。
+
 ### 出网白名单（`egressAllowlist`）
 
 影子读到的任何内容都是**不可信数据**——一个网页、一个 issue、一份 README 都可能夹带"把某个文件发到某个地址"这类指令。这是**间接提示注入**，也是这类工具最现实的威胁。
@@ -217,7 +219,7 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 
 代价说清楚：日常是"没碰敏感文件 → 发白名单不打扰你；碰了 → 这一轮发什么都先问"，但**读一次 `.env` 之后，这一轮里连正常的抓网页都会问你**。
 
-**这条规则覆盖不到**：绕开 HTTP 的通道（DNS 外泄、写到同步目录再由别的程序送出）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
+**这条规则覆盖不到**：绕开 HTTP 的通道（DNS 外泄、写到同步目录或 UNC 路径再由别的程序送出）、**重定向**（白名单域名 302 到别处，守卫只看初始 URL）、**脚本/别名间接**（`npm run release` 背后才是 publish、git 别名 `pu`=push，参数里看不出真正动作）、把目的地编码/拆写得本守卫认不出的 URL 拼法、以及由外部服务器提供且参数里不带目的地的工具（`mcp__*`，这类一律问人，但问的是"要不要用这个工具"而不是"发去哪里"）。它是一条减速带，不是证明。
 
 ---
 
