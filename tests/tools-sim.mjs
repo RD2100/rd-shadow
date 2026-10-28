@@ -236,6 +236,7 @@ function makeWorld() {
 function mount(world, options = {}) {
   const registered = []
   const guards = []
+  const sessionEvents = []
   const asked = []
   const ctx = {
     tools: {
@@ -245,6 +246,7 @@ function mount(world, options = {}) {
     },
     on(event, handler) {
       if (event === 'tools/pre-execute') guards.push(handler)
+      else if (event === 'session/event') sessionEvents.push(handler)
     },
     get(name) {
       if (name === 'agentDefaultModel') {
@@ -273,6 +275,7 @@ function mount(world, options = {}) {
   // Keep the historical Map shape for call sites, with the wiring attached.
   tools.guards = guards
   tools.asked = asked
+  tools.sessionEvents = sessionEvents
   return tools
 }
 
@@ -768,6 +771,49 @@ await check('an approval that throws denies instead of allowing', async () => {
   assert.equal(decision.kind, 'deny')
   assert.equal(reachedNext, false)
   assert.match(decision.reason, /could not ask about evil\.test/)
+})
+
+await check('reading protected data raises the bar for the rest of the turn', async () => {
+  const world = makeWorld()
+  const shadow = world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['ok.test'] } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+
+  // 1. The allowlisted destination is free before anything protected is read.
+  const before = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 'c1', agent, signal })
+  assert.equal(before.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 0)
+
+  // 2. Reading a protected path marks the turn.
+  const reading = await runGuard(tools.guards, { name: 'read', arguments: { file_path: 'D:\\DSH\\.DSH\\.credentials.yaml' }, callId: 'c2', agent, signal })
+  assert.equal(reading.decision.kind, 'allow', 'reading itself is never blocked')
+  assert.equal(tools.asked.length, 0)
+
+  // 3. The same allowlisted destination now needs confirmation.
+  const after = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 'c3', agent, signal })
+  assert.equal(tools.asked.length, 1)
+  assert.match(tools.asked[0].reason, /read protected data/)
+  assert.equal(after.decision.kind, 'allow', 'allowed-once still lets it through')
+
+  // 4. The turn boundary clears the mark.
+  assert.equal(tools.sessionEvents.length, 1)
+  tools.sessionEvents[0](shadow, { type: 'turn/end', data: {} })
+  const later = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 'c4', agent, signal })
+  assert.equal(later.decision.kind, 'allow')
+  assert.equal(tools.asked.length, 1, 'no new prompt after the turn ended')
+})
+
+await check('a refused confirmation after reading protected data stops the send', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { approval: 'rejected', config: { egressAllowlist: ['ok.test'] } })
+  const agent = world.goLive('shadow-1')
+  const signal = new AbortController().signal
+  await runGuard(tools.guards, { name: 'read', arguments: { file_path: 'id_rsa' }, callId: 'c1', agent, signal })
+  const send = await runGuard(tools.guards, { name: 'web_fetch', arguments: { url: 'https://ok.test/a' }, callId: 'c2', agent, signal })
+  assert.equal(send.decision.kind, 'deny')
+  assert.equal(send.reachedNext, false)
 })
 
 console.log(`tools integration sim: ${passed} scenarios passed`)

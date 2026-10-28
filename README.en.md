@@ -202,7 +202,19 @@ The point: **it checks the destination, not the payload**. Base64, splitting or 
 
 The default allowlist is empty, so every outbound request asks. Add hosts to stop being asked — but remember **an allowlist entry is itself a channel**.
 
-**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing a file another process sends), and URL spellings the guard cannot recognise. It is a speed bump, not a proof.
+### Reading protected data disables the allowlist
+
+The better question is not "does this content look sensitive" but **"what did this Session just read"**. `protectedPaths` lists file names or path fragments (by default `.credentials`, `.env`, `id_rsa`, `id_ed25519`, `.pem`, `.pfx`, `secrets`).
+
+- A tool call that **mentions** one of them — reads it, lists its directory, names it in a command — marks that Session's **current turn**;
+- While marked, **every outbound request asks**, even to an allowlisted host;
+- The mark clears at the turn boundary (`turn/end`, or the next `turn/start`).
+
+Why this beats a content filter: **what it read is knowable** (the path is in the arguments), while **what counts as sensitive is not** (the same string is a key in a config file and an example in a doc). The mark never inspects what you send — it looks at what was touched earlier — so base64 or splitting the payload cannot dodge it.
+
+The cost, stated plainly: ordinary work is "never touched a secret → allowlisted hosts stay quiet; touched one → everything asks for the rest of that turn". That includes **a normal web fetch later in the same turn after reading `.env`**.
+
+**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing into a synced folder another process uploads), commands outside the network-client list such as `git push`, and URL spellings the guard cannot recognise. It is a speed bump, not a proof.
 
 ---
 

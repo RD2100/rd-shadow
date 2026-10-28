@@ -9,7 +9,7 @@ import {
   currentSelection, foldInbox, pendingUserWait, deliveryEvidence,
   decideTargetState, isReceivable, selectionMismatch,
   renderSelection, renderDispatchReceipt, renderInspection, summarizeEvent,
-  inspectEgress,
+  inspectEgress, touchesProtected,
 } from '../lib/dispatch-core.js'
 
 let passed = 0
@@ -351,6 +351,31 @@ check('egress: the payload is irrelevant, only the destination is', () => {
   const secret = 'sk-FAKE-not-a-real-key'
   assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: `https://ok.test/?k=${secret}` }, allowlist: ['ok.test'] }), undefined)
   assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: `https://bad.test/?k=${secret}` }, allowlist: ['ok.test'] })?.host, 'bad.test')
+})
+
+/* ---------- protected data (provenance, not content shape) ---------- */
+check('protected: naming a protected path marks the turn', () => {
+  assert.equal(touchesProtected({ args: { file_path: 'D:\\DSH\\.DSH\\.credentials.yaml' } }), '.credentials')
+  assert.equal(touchesProtected({ args: { command: 'Get-Content .env' } }), '.env')
+  assert.equal(touchesProtected({ args: { path: 'C:\\Users\\me\\.ssh\\id_rsa' } }), 'id_rsa')
+})
+check('protected: ordinary content is not marked', () => {
+  assert.equal(touchesProtected({ args: { content: 'hello world' } }), undefined)
+  assert.equal(touchesProtected({ args: { command: 'Get-ChildItem D:\\work' } }), undefined)
+  assert.equal(touchesProtected({ args: {} }), undefined)
+})
+check('protected: an empty list disables the check', () => {
+  assert.equal(touchesProtected({ args: { file_path: '.credentials.yaml' }, protectedPaths: [] }), undefined)
+})
+check('protected: a tainted turn loses the allowlist', () => {
+  const args = { url: 'https://ok.test/x' }
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args, allowlist: ['ok.test'], tainted: false }), undefined)
+  const v = inspectEgress({ toolName: 'web_fetch', args, allowlist: ['ok.test'], tainted: true })
+  assert.equal(v?.host, 'ok.test')
+  assert.match(v?.reason ?? '', /read protected data/)
+})
+check('protected: loopback still passes when tainted', () => {
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: 'http://127.0.0.1:9/x' }, tainted: true }), undefined)
 })
 
 console.log(`dispatch-core self-check: ${passed} checks passed`)

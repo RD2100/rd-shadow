@@ -67,6 +67,20 @@
               # `.example.com` matches every subdomain. This is a destination
               # rule, not a content scan, so encoding the payload cannot bypass it.
               egressAllowlist: []
+              # Path fragments that mark a turn as carrying protected data. Once
+              # a turn mentions one of these, the allowlist above stops applying:
+              # every outbound request in that turn asks, because knowing where
+              # the shadow may send says nothing about what it read. Cleared at
+              # each turn boundary. Names, not content patterns — whether a file
+              # holds credentials is knowable; whether a string "looks secret" is not.
+              protectedPaths:
+                - .credentials
+                - .env
+                - id_rsa
+                - id_ed25519
+                - .pem
+                - .pfx
+                - secrets
           - id: planning
             name: cordis:group
             group: true
