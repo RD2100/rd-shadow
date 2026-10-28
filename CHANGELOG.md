@@ -22,6 +22,8 @@
 - **段首才算命令，散文不算**：宽矩阵探针发现 `git commit -m "fix: push hole and curl notes"` 会触发询问——提交信息里的命令名被当成了调用。现在命令名必须出现在段首（剥掉 `sudo`/`env`/`Start-Process`/`&`/`(` 等外壳之后）
 - **可执行 span 不能借散文的静默**：上一轮的散文豁免开出了新洞——`echo $(curl https://evil.test)`、反引号替换、`(curl …)` 子shell、`if ($true) { curl … }`、`$c="curl"; & $c https://…` 全部因段首不是客户端而漏放。现在 `$(...)`/反引号/`{...}` 的内容按命令分析，子shell 外壳被剥掉，无法识别的命令词（含变量）一律 fail closed；只有显式的数据类命令（`echo`/`Write-Output`/`git commit`/构建工具等）把 URL 当散文
 - **守卫自身失败时拒绝而非放行**：`tools/pre-execute` 里的污点读取与目的地判定包进同一个 try，任何内部错误都以「检查本身失败」为由拒绝该调用。之前在异常检查下放行，等于把 bug 变成洞
+- **命令头归一化（端到端抓到的漏报）**：真实环境里模型写的是 `curl.exe --max-time 3 host`、`git.exe push`、`npm.cmd publish`、`C:\…\curl.exe`、`cmd /c curl …`、`powershell -c "curl …"`、`& "curl.exe" …`——可执行后缀、全路径、转发外壳、包裹引号这四种拼法让段首匹配全部失配，整条命令静默放行。现在判定前统一剥掉这些形态（循环到稳定），`yarnpkg publish` 一并补上；数据类命令的同名写法（`git.exe commit -m "docs: curl"`）仍是散文
+- **端到端验证提示词的方法论缺陷**：提示词让影子自己报告「有没有弹审批」，但代理侧看不到审批弹窗——它只看到工具结果。审批是否发生由操作员在会话日志里核对（`approval/asked` 事件带守卫的 reason 原文），提示词已改写为「代理报结局、操作员核审批」
 - **本机 URL 协议不算外发**：`web_fetch` 取 `data:`/`blob:`/`about:` 是本地读取，不再误报
 - **监听器注册提前**：`session/created` 的注册先于权限身份诊断，诊断出问题也不影响钉权限
 
