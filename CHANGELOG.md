@@ -4,26 +4,31 @@
 
 ## [Unreleased]
 
-### 待办（发布前）
+### 待办（0.2.0 之后）
 
 - 截图放进 README
-- 决定是否发布到 npm
+- 决定是否发布到 npm（版本已就绪：`npm pack` 检查通过，见 `scripts/pack-check.mjs`）
 - 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
+
+## [0.2.0] — 2026-10-28
+
+出网守卫按「举一反三排查 → 修复 → 再排查」循环做了五轮，每轮都抓到真实的洞或误报。这一版把守卫从「只认 URL」补成了「按目的地判定」，并消除了它自己引入的两类新问题。
 
 ### Fixed
 
 - **出网守卫补洞**：目的地不在参数里的外发命令（`git push`、`git remote add/set-url`、`npm publish`、`docker push`、`scp`、`ssh`、DNS 查询、云 CLI 等）此前因只认 `http(s)://` URL 而全部无检查放行，现在一律问人；`git clone/fetch/pull` 的 scp 语法（`git@host:repo`）、非 HTTP 协议目的地、`mcp__*` 外服工具、拼不出可读 URL 的 `curl`/`wget` 同类处理；解释器（`python`/`node` 等）纳入外壳扫描；`web_fetch` 目的地不可读时问人，`web_search` 仍静默、仅在本轮读过受保护数据时才问
 - **补全远程工具族**：`gh`（除 version/help/auth status/config get 外全部）、`svn`/`hg` 的提交/推送/克隆、`git send-email`/`ls-remote`/`submodule`、`Start-BitsTransfer`、数据库客户端（`psql`/`mysql`/`mongo`/`sqlcmd`/`redis-cli`）一律问人；其中目的地本身是 URL 的形式（`git clone https://…`、`svn checkout https://…`）仍走白名单
 - **链式命令不能洗白外发**：`git push origin main && curl https://白名单域名` 这类写法此前因同一串文本里别处有 URL 而放行；URL 判断改为按 `;`/`&&`/`||`/`|`/`&`/换行分段进行，且引号内的分隔符不算分隔符
-- **段首才算命令，散文不算**：交付前宽矩阵探针发现 `git commit -m "fix: push hole and curl notes"` 会触发询问——提交信息里的命令名被当成了调用。现在命令名必须出现在段首（剥掉 `sudo`/`env`/`Start-Process`/`&`/`(` 等外壳之后）
+- **段首才算命令，散文不算**：宽矩阵探针发现 `git commit -m "fix: push hole and curl notes"` 会触发询问——提交信息里的命令名被当成了调用。现在命令名必须出现在段首（剥掉 `sudo`/`env`/`Start-Process`/`&`/`(` 等外壳之后）
 - **可执行 span 不能借散文的静默**：上一轮的散文豁免开出了新洞——`echo $(curl https://evil.test)`、反引号替换、`(curl …)` 子shell、`if ($true) { curl … }`、`$c="curl"; & $c https://…` 全部因段首不是客户端而漏放。现在 `$(...)`/反引号/`{...}` 的内容按命令分析，子shell 外壳被剥掉，无法识别的命令词（含变量）一律 fail closed；只有显式的数据类命令（`echo`/`Write-Output`/`git commit`/构建工具等）把 URL 当散文
+- **守卫自身失败时拒绝而非放行**：`tools/pre-execute` 里的污点读取与目的地判定包进同一个 try，任何内部错误都以「检查本身失败」为由拒绝该调用。之前在异常检查下放行，等于把 bug 变成洞
 - **本机 URL 协议不算外发**：`web_fetch` 取 `data:`/`blob:`/`about:` 是本地读取，不再误报
 - **监听器注册提前**：`session/created` 的注册先于权限身份诊断，诊断出问题也不影响钉权限
 
 ### Documentation
 
-- 中英文 README 补全出网守卫的完整行为表（不可读目的地、外服工具、非 HTTP 协议一律问人）、「段首才算命令」的散文豁免与可执行 span（`$(...)`/反引号/`{}`/子shell）的解析，与「覆盖不到」清单（重定向、脚本/别名间接、UNC/同步目录）
-- 说明全新启动时身份行显示 fallback 是 bundles 并发挂载的竞争所致（数组顺序只影响 import 发起的先后，不决定完成顺序），每个会话创建时都会重新解析
+- 中英文 README 补全出网守卫的完整行为表（不可读目的地、外服工具、非 HTTP 协议一律问人）、「段首才算命令」的散文豁免与可执行 span（`$(...)`/反引号/`{}`/子shell）的解析，与「覆盖不到」清单（重定向、脚本/别名间接、解释器非 URL 外发、UNC/同步目录）
+- 更正启动身份行的成因说明：bundles 是**并发**挂载（加载器用 `Promise.all` 激活整个列表），数组顺序只影响 import 发起的先后，不决定完成顺序，也不保证启动那行显示 `auto`；每个会话创建时都会重新解析
 
 ## [0.1.0] — 2026-10-28
 
