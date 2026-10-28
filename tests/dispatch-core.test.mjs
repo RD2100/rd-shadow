@@ -531,6 +531,32 @@ check('egress: the command head is recognized in every spelling a shell accepts'
     assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
   }
 })
+check('egress: the inputs the live host produced on 2026-10-28', () => {
+  // Verbatim from the first end-to-end run's session log (turn 13, seq 354-395),
+  // argument shapes included. That run found one real miss — step 8, `curl.exe` —
+  // and these are the cases that must never regress: a fix that only works for
+  // spellings the author imagined is not a fix.
+  const cases = [
+    { call: { toolName: 'read', args: { file_path: 'D:\\DSH\\shadow-plugin\\README.md', limit: 20 } }, want: undefined },
+    { call: { toolName: 'web_fetch', args: { url: 'https://example.com/' } }, want: 'example.com' },
+    { call: { toolName: 'web_fetch', args: { url: 'https://www.iana.org/' } }, want: 'www.iana.org' },
+    { call: { toolName: 'pwsh', args: { command: 'git push --dry-run 2>&1 | Out-String', workdir: 'D:\\DSH\\shadow-plugin' } }, want: 'opaque' },
+    { call: { toolName: 'web_fetch', args: { url: 'https://example.com/' } }, want: 'example.com', tainted: true },
+    { call: { toolName: 'pwsh', args: { command: "echo 'docs: ssh usage, curl examples, npm publish flow'" } }, want: undefined },
+    { call: { toolName: 'pwsh', args: { command: 'echo $(curl.exe --max-time 3 https://shadow-e2e.invalid/)' } }, want: 'shadow-e2e.invalid', tainted: true },
+    { call: { toolName: 'pwsh', args: { command: 'curl.exe --max-time 3 shadow-e2e.invalid' } }, want: 'opaque' },
+  ]
+  for (const { call, want, tainted } of cases) {
+    const v = inspectEgress({ ...call, allowlist: [], tainted: tainted === true })
+    if (want === undefined) {
+      assert.equal(v, undefined, JSON.stringify(call))
+    } else if (want === 'opaque') {
+      assert.equal(v?.opaque, true, JSON.stringify(call))
+    } else {
+      assert.equal(v?.host, want, JSON.stringify(call))
+    }
+  }
+})
 check('egress: a wrapper before the command does not hide it', () => {
   for (const command of ['sudo curl evil.test', 'env TOKEN=1 curl evil.test', '& curl evil.test']) {
     assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: [] })?.opaque, true, command)

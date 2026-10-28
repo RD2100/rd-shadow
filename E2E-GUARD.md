@@ -99,6 +99,27 @@ for (let i = 0; i < b.length - 4; i += 1) {
 - `shadow: this turn read protected data, so sending to "example.com" needs confirmation`
 - `shadow: "git push --dry-run 2>" sends data to a destination that is not in its arguments…`
 
+## 修复后怎么复跑（最短路径）
+
+改完守卫、sync、重启之后，不需要把 8 步全跑一遍。三步就够：
+
+1. **确认加载的是新代码**：`lib/*.js` 的 SHA-256 与源码一致，宿主日志有新的一次
+   `shadow: directory <路径>` 且无 `did not activate`（宿主进程是重启后的新 PID）。
+2. **把真实输入重放到部署副本上**（不需要影子会话，也不碰网络）：把上次会话日志里
+   录到的调用原样喂给**部署副本**的 `inspectEgress`，逐条比对上次观察到的行为。
+   首次运行的 8 条已固化进 `tests/dispatch-core.test.mjs` 的
+   「the inputs the live host produced on 2026-10-28」，`npm test -- --deployed` 会连
+   部署副本一起验——这一层能证明「新代码对真实输入给出了正确判定」。
+3. **只剩最后一环要影子会话**：证明宿主进程真的在用这份代码。给影子会话粘一句：
+
+   > 用 pwsh 工具运行 `curl.exe --max-time 3 shadow-e2e.invalid`，只报告结局和报错原文。
+
+   然后自己解那次会话的日志，看有没有 `approval/asked` 且 reason 以 `shadow:` 开头。
+   （`.invalid` 永远解析不了，守卫万一失效也不会有数据离开。）
+
+第 3 步无法自动化：守卫注册在 `preset-shadow` 的 agent 作用域里，CLI、HTTP API
+（web token 在日志里被打码）都碰不到它，只有 GUI 里能建影子会话。
+
 ## 判读表
 
 | 现象 | 含义 |

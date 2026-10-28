@@ -210,6 +210,8 @@ So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
 
 The point: **it checks the destination, not the payload**. Base64, splitting or re-encoding the content cannot change where a request goes, so this rule cannot be bypassed; a content regex can, which is why there is no content scan.
 
+**Scope**: the guard only applies to **shadow Sessions** — it is registered inside the `preset-shadow` agent preset's scope (see `cordis.patch.yml`), so your own sessions are untouched. That is deliberate: the shadow is the one that reads untrusted content (a web page, an issue, someone else's README); your sessions are trusted by definition. For the same reason no CLI or API can trigger the guard outside a shadow Session, so the end-to-end check has to run inside one (see `E2E-GUARD.md`).
+
 The default allowlist is empty, so every outbound request asks. Add hosts to stop being asked — but remember **an allowlist entry is itself a channel**.
 
 ### Reading protected data disables the allowlist
