@@ -20,13 +20,23 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 /** Installed package name; the checkout directory may be named differently. */
 const PACKAGE = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name
 
-/** Everything the runtime loads, resolved from disk rather than listed by hand. */
+/**
+ * Everything the runtime loads, in the order it must be copied.
+ *
+ * `cordis.patch.yml` goes last on purpose: DSH's HMR reacts to a profile config
+ * change by recomposing, and that recompose re-imports the entry points while
+ * possibly reusing cached siblings. Copying the patch first therefore hands the
+ * watcher a new entry next to old modules — the exact skew that made the plugin
+ * fail to import on 2026-10-28. Copying code first means any recompose it
+ * triggers already sees a consistent module set.
+ */
 function runtimeFiles() {
-  const fixed = ['package.json', 'cordis.patch.yml', 'README.md', 'LICENSE']
+  const docs = ['README.md', 'LICENSE']
+  const manifest = ['package.json']
   const lib = readdirSync(path.join(ROOT, 'lib'))
     .filter((name) => name.endsWith('.js'))
     .map((name) => path.join('lib', name))
-  return [...fixed, ...lib]
+  return [...manifest, ...docs, ...lib, 'cordis.patch.yml']
 }
 
 /** Read one flag value. */
