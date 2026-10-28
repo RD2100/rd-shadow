@@ -625,6 +625,26 @@ Remove-Item -LiteralPath "D:\DSH\shadow-selftest-irreversible" -Recurse -Force; 
 
 **若需要可验证的确定性**，只能放弃"依赖模型判断"这条路：在插件内自建窄守卫，用**模式匹配**（而非判断）锁定不可逆/外发动作（例如参数里出现 `sk-`/`AKIA`/私钥头且目标是非本机 host 时强制走 `approval.request`）。模式规则可以用假数据安全地端到端验证——这正是 §11.10 选项 B，当初因「不自建分级器」而未采用。
 
+### 11.12 落地：出网目的地守卫（2026-10-28，已实现）
+
+对照 §11.11 的结论，最终落地的是**查目的地**而不是查内容——因为内容正则能被编码绕过，目的地不能。
+
+| 项 | 实现 |
+|---|---|
+| 纯规则 | `dispatch-core.inspectEgress({toolName, args, allowlist})`：递归收集参数里的字符串（深度 4、单串 20 000 字符、最多 200 条），从中提取 `http(s)://` 的 authority，剥掉凭据与端口后比对白名单 |
+| 触发条件 | 只检查**能触网**的调用：工具名匹配 `web-fetch/fetch/http/browse`，或 shell 类工具（`pwsh/powershell/bash/sh/cmd/shell/terminal/exec`）**且**命令里出现 URL 或 `curl/wget/iwr/irm/nc/ftp/sftp/scp/ssh/telnet` |
+| 本机豁免 | `localhost`、`127.0.0.1`、`0.0.0.0`、`::1`、`[::1]` |
+| 白名单 | `egressAllowlist`（默认空）；支持 `.example.com` 形式的子域后缀匹配 |
+| 作用域 | 注册在 `tools.js` 的 `apply` 里 → agent 作用域，**只对影子生效** |
+| 处置 | `approval.request` 且只接受 `allowed-once`；审批服务缺失或抛错 → **拒绝**（fail closed）；被拒 → 拒绝并给出 host |
+| 不打扰 | 写文件/编辑/调遣等不触网的工具即使正文含 URL 也不问——否则日常写文档会满屏弹窗 |
+
+验证：纯核 8 项（白名单/子域/本机/凭据与端口/嵌套参数/shell 触发条件/不触网工具/**同一密钥两个目的地**）+ 集成仿真 6 项（问人后放行、被拒即停、无审批通道拒绝、白名单不问、不触网不问、审批抛错拒绝）。全部用假数据，不需要真实外发。
+
+**边界（写进 README）**：不管 DNS 外泄、写文件再由他进程送出、以及守卫识别不出的 URL 拼法。它是减速带，不是证明。
+
+**仍然无法在产品内解决的**：沙箱三档限制的是**写**不是读（`writableRoots` 只在 `workspace-write` 下返回工作区与临时目录，`read-only` 返回空数组），所以「让影子读不到凭据」只能靠 OS 层（独立账号 / 容器 / 文件 ACL）或干脆不把长期凭据放在它运行的位置。这一条已如实写入 README 的安全警告。
+
 ---
 
 ## 12. 风险与开放项

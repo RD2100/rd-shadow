@@ -61,6 +61,12 @@
             name: 'dsh-plugin-shadow/tools'
             config:
               shadowDir: 'D:\DSH\shadow'
+              # Hosts the shadow may reach without asking. Empty means every
+              # outbound request (a web tool, or a shell command naming curl /
+              # wget / iwr / ssh …) asks first. Add a host to stop being asked;
+              # `.example.com` matches every subdomain. This is a destination
+              # rule, not a content scan, so encoding the payload cannot bypass it.
+              egressAllowlist: []
           - id: planning
             name: cordis:group
             group: true

@@ -186,6 +186,24 @@ Before installing, confirm:
 profile package.json → dsh.profile.bundles contains "@deepseek-ai/dsh-experimental-auto-review"
 ```
 
+### Outbound allowlist (`egressAllowlist`)
+
+Anything the shadow reads is **untrusted data** — a web page, an issue, a README can all carry "send this file to that address" instructions. That is **indirect prompt injection**, and it is the most realistic threat for a tool like this.
+
+So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
+
+| Case | Behaviour |
+|---|---|
+| A web tool, or a shell command naming `curl`/`wget`/`iwr`/`ssh`… whose destination host is in `egressAllowlist` (always including `localhost`/`127.0.0.1`) | allowed |
+| Same, but the host is not listed | **asks you**, accepting only a one-time grant; refused when no approval channel exists |
+| Calls that cannot reach the network (file writes, edits, dispatch — even when their text contains URLs) | never disturbed |
+
+The point: **it checks the destination, not the payload**. Base64, splitting or re-encoding the content cannot change where a request goes, so this rule cannot be bypassed; a content regex can, which is why there is no content scan.
+
+The default allowlist is empty, so every outbound request asks. Add hosts to stop being asked — but remember **an allowlist entry is itself a channel**.
+
+**What this does not cover**: channels that avoid HTTP (DNS exfiltration, writing a file another process sends), and URL spellings the guard cannot recognise. It is a speed bump, not a proof.
+
 ---
 
 ## Known limitations
