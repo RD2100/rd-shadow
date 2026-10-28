@@ -531,6 +531,58 @@ check('egress: the command head is recognized in every spelling a shell accepts'
     assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
   }
 })
+check('egress: a command word the guard cannot read still names the command', () => {
+  // Round 7 of the adversarial probing, all found by running them: a variable
+  // holds the real name, a string evaluator runs its argument, and a Windows
+  // trailing dot hides the suffix. Each of these passed in silence before.
+  const asks = [
+    'iex "curl.exe evil.test"',
+    'Invoke-Expression "curl.exe evil.test"',
+    '& $env:ComSpec /c curl.exe evil.test',
+    'curl.exe. evil.test',
+    '$c = "curl.exe"; & $c evil.test',
+    '$c = "C:\\tools\\curl.exe"; & $c evil.test',
+    'iex "git push"',
+    '& $env:ComSpec /c git push',
+    '$c = "git.exe"; & $c push',
+    '$c = "npm.cmd"; & $c publish',
+  ]
+  for (const command of asks) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
+  }
+  // A client that only reports its own version or help reaches nowhere, so it
+  // stays quiet — asking about it would train the operator to click through.
+  const quiet = [
+    'curl.exe --version',
+    'curl --version',
+    'curl -h',
+    'ssh -V',
+    'wget --help',
+    // An unknown command name is not the same as an unreadable one: the guard
+    // cannot read every command in the world, and searching those would ask
+    // about searching a file.
+    'grep curl README.md',
+    'findstr /s "curl" *.md',
+    // Prose about the evaluators is still prose.
+    'echo "iex and Invoke-Expression are PowerShell aliases"',
+    'git.exe commit -m "docs: curl.exe and iex usage"',
+  ]
+  for (const command of quiet) {
+    assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
+  }
+  // The exemption above must not become a hole: each of these still sends.
+  const stillOutbound = [
+    'curl -v evil.test',                    // -v is verbose
+    'curl -H "X-Test: evil.test" ok.test',  // -H is a header
+    'curl -V evil.test',                    // wrong case
+    'telnet -V evil.test',                  // a flag plus a host still connects
+    'curl --version evil.test',             // version plus a destination
+    'wget -q evil.test',
+  ]
+  for (const command of stillOutbound) {
+    assert.notEqual(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: ['ok.test'] }), undefined, command)
+  }
+})
 check('egress: the inputs the live host produced on 2026-10-28', () => {
   // Verbatim from the first end-to-end run's session log (turn 13, seq 354-395),
   // argument shapes included. That run found one real miss — step 8, `curl.exe` —

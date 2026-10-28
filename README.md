@@ -205,6 +205,7 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 | 调用不触网（写文件、编辑、调遣等，哪怕内容里有 URL） | 不打扰 |
 | 命令名只出现在**文本**里（提交信息、echo、注释——`git commit -m "docs: ssh usage"`） | 不打扰——只有段首（`;`/`&&`/`||`/`|`/`&`/换行之后，剥掉 `sudo`/`env`/`&`/`(`/`cmd /c`/`powershell -c` 等外壳）的才是命令 |
 | 命令写成 `git.exe push`、`npm.cmd publish`、`C:\…\curl.exe evil.test`、`cmd.exe /c curl …`、`& "curl.exe" …` | **强制问人**——命令头归一化：Windows 的后缀、全路径、转发外壳、包裹的引号都在判定前剥掉 |
+| 命令名藏在变量或字符串求值里：`$c = "curl.exe"; & $c evil.test`、`& $env:ComSpec /c curl …`、`iex "curl.exe evil.test"`、`Invoke-Expression "git push"` | **强制问人**——赋值先解析，变量/求值器开头的段整段按命令搜；只有 `curl --version`/`ssh -V` 这类**唯一参数**的版本/帮助查询不打扰（`-v` 是 verbose、`-H` 是头，都照样问） |
 | 命令藏在 `$(...)`、反引号、`{ ... }`、子shell 里（`echo $(curl https://evil.test)`、`if ($true) { curl … }`） | **强制问人**——这些是 shell 真正会执行的内容，按命令分析 |
 | URL 出现在数据类命令的参数里（`git commit -m "see https://evil.test"`、`echo`、`Write-Output`、构建工具） | 不打扰——那是散文，不是目的地 |
 
