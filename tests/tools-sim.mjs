@@ -762,6 +762,22 @@ await check('a non-network call never asks', async () => {
   assert.equal(tools.asked.length, 0)
 })
 
+await check('a guard that cannot answer refuses the call instead of passing it', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const tools = mount(world, { config: { egressAllowlist: ['example.com'] } })
+  // A value whose read throws stands in for any failure inside the check itself.
+  // The call must be refused with its cause: silently passing on a broken check
+  // would turn a bug into a hole.
+  const arguments_ = { get url() { throw new Error('unreadable payload') } }
+  const exec = { name: 'web_fetch', arguments: arguments_, callId: 'c7', agent: world.goLive('shadow-1'), signal: new AbortController().signal }
+  const { decision, reachedNext } = await runGuard(tools.guards, exec)
+  assert.equal(decision.kind, 'deny')
+  assert.equal(reachedNext, false)
+  assert.match(decision.reason, /outbound check itself failed/)
+  assert.equal(tools.asked.length, 0, 'a broken check does not become a question')
+})
+
 await check('an approval that throws denies instead of allowing', async () => {
   const world = makeWorld()
   world.addSession('shadow-1', SHADOW_DIR)
