@@ -13,7 +13,9 @@
 ### Fixed
 
 - **出网守卫补洞**：目的地不在参数里的外发命令（`git push`、`git remote add/set-url`、`npm publish`、`docker push`、`scp`、`ssh`、DNS 查询、云 CLI 等）此前因只认 `http(s)://` URL 而全部无检查放行，现在一律问人；`git clone/fetch/pull` 的 scp 语法（`git@host:repo`）、非 HTTP 协议目的地、`mcp__*` 外服工具、拼不出可读 URL 的 `curl`/`wget` 同类处理；解释器（`python`/`node` 等）纳入外壳扫描；`web_fetch` 目的地不可读时问人，`web_search` 仍静默、仅在本轮读过受保护数据时才问
+- **补全远程工具族**：`gh`（除 version/help/auth status/config get 外全部）、`svn`/`hg` 的提交/推送/克隆、`git send-email`/`ls-remote`/`submodule`、`Start-BitsTransfer`、数据库客户端（`psql`/`mysql`/`mongo`/`sqlcmd`/`redis-cli`）一律问人；其中目的地本身是 URL 的形式（`git clone https://…`、`svn checkout https://…`）仍走白名单
 - **链式命令不能洗白外发**：`git push origin main && curl https://白名单域名` 这类写法此前因同一串文本里别处有 URL 而放行；URL 判断改为按 `;`/`&&`/`||` 分段进行
+- **本机 URL 协议不算外发**：`web_fetch` 取 `data:`/`blob:`/`about:` 是本地读取，不再误报
 - **监听器注册提前**：`session/created` 的注册先于权限身份诊断，诊断出问题也不影响钉权限
 
 ### Documentation

@@ -198,7 +198,8 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 |---|---|
 | 调用是 web 工具，或 shell 命令里出现 `curl`/`wget`/`iwr`/`ssh` 等，且目标 host 在 `egressAllowlist` 内（含 `localhost`/`127.0.0.1`） | 放行 |
 | 同上，但 host 不在白名单 | **强制问人**，只接受一次授权；没有审批通道则**拒绝** |
-| 外发命令的目的地不在参数里（`git push`、`npm publish`、`docker push`、`scp`、`ssh`、DNS 查询、云 CLI 等） | **强制问人**——没有可比的 host，白名单无从判断 |
+| 外发命令的目的地不在参数里（`git push`、`npm publish`、`docker push`、`gh`、`svn`/`hg`、`scp`、`ssh`、DNS 查询、云 CLI、数据库客户端、BITS 传输等） | **强制问人**——没有可比的 host，白名单无从判断 |
+| `git clone`/`fetch`/`pull`/`svn checkout` 这类**目的地本身就是 URL** 的命令 | 按普通白名单规则判定；scp 语法或配置远程的形式一律问人 |
 | 命令里出现网络客户端但拼不出可读 URL（`curl evil.test`），或目的地在非 HTTP 协议上（`ftp://`） | **强制问人** |
 | 工具由外部服务器提供（`mcp__*`） | **强制问人**——目的地对它自己可见，对本进程不可见 |
 | 调用不触网（写文件、编辑、调遣等，哪怕内容里有 URL） | 不打扰 |

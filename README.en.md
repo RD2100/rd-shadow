@@ -198,7 +198,8 @@ So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
 |---|---|
 | A web tool, or a shell command naming `curl`/`wget`/`iwr`/`ssh`… whose destination host is in `egressAllowlist` (always including `localhost`/`127.0.0.1`) | allowed |
 | Same, but the host is not listed | **asks you**, accepting only a one-time grant; refused when no approval channel exists |
-| An outbound command whose destination is not in its arguments (`git push`, `npm publish`, `docker push`, `scp`, `ssh`, DNS lookups, cloud CLIs) | **asks you** — with no host to compare, the allowlist cannot decide |
+| An outbound command whose destination is not in its arguments (`git push`, `npm publish`, `docker push`, `gh`, `svn`/`hg`, `scp`, `ssh`, DNS lookups, cloud CLIs, database clients, BITS transfers) | **asks you** — with no host to compare, the allowlist cannot decide |
+| A command whose destination IS a URL (`git clone`/`fetch`/`pull`, `svn checkout`) | checked by the ordinary allowlist rule; the scp syntax and configured-remote forms always ask |
 | A command naming a network client but spelling no readable URL (`curl evil.test`), or a destination on a non-HTTP protocol (`ftp://`) | **asks you** |
 | A tool served by an external server (`mcp__*`) | **asks you** — its destination is visible to it, not to this process |
 | Calls that cannot reach the network (file writes, edits, dispatch — even when their text contains URLs) | never disturbed |

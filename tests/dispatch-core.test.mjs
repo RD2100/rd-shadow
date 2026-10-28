@@ -360,12 +360,18 @@ check('egress: a remote whose address is not in the arguments always asks', () =
     'git push -u origin main',
     'git -c user.email=a@b.c push',
     'git remote add up https://github.com/org/repo',
+    'git send-email',
+    'git submodule update --init',
     'npm publish',
     'npm run publish',
     'pnpm publish',
     'docker push img:tag',
     'docker login',
-    'gh release create v1',
+    'gh repo clone org/repo',
+    'gh auth login',
+    'gh api /repos/org/repo',
+    'svn commit -m "x"',
+    'hg push',
     'rsync -a ./ out:/srv',
     'scp a.txt host:/tmp',
     'sftp host',
@@ -373,6 +379,8 @@ check('egress: a remote whose address is not in the arguments always asks', () =
     'telnet host',
     'nc host 4444',
     'aws s3 cp a.txt s3://bucket',
+    'Start-BitsTransfer -Source https://ok.test/a -Destination b',
+    'psql -h evil.test -U me db',
     'nslookup evil.test',
     'Resolve-DnsName evil.test',
   ]
@@ -383,10 +391,15 @@ check('egress: a remote whose address is not in the arguments always asks', () =
     assert.match(v?.reason ?? '', /cannot be checked/, command)
   }
 })
-check('egress: git clone over a readable URL is checked, the scp form asks', () => {
+check('egress: a URL-destination command is checked, its configured-remote form asks', () => {
+  // The remote is a readable URL: an ordinary host check.
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git clone https://example.com/r.git' }, allowlist: ['example.com'] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'svn checkout https://example.com/r' }, allowlist: ['example.com'] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'hg pull https://example.com/r' }, allowlist: ['example.com'] }), undefined)
+  // The same commands over a configured remote or scp syntax carry no host.
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git clone git@github.com:org/repo.git' }, allowlist: ['.github.com'] })?.opaque, true)
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git fetch' }, allowlist: [] })?.opaque, true)
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'svn update' }, allowlist: [] })?.opaque, true)
 })
 check('egress: chaining an allowlisted call onto a push cannot launder it', () => {
   // A push always asks (its URL form usually carries credentials); the curl half
@@ -398,10 +411,27 @@ check('egress: chaining an allowlisted call onto a push cannot launder it', () =
   assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'git pull https://ok.test/r.git' }, allowlist: ['ok.test'] }), undefined)
 })
 check('egress: ordinary git and file commands never ask', () => {
-  const quiet = ['git status', 'git log --oneline -3', 'git remote -v', 'git commit -m "fix the push hole"', 'echo the host is up', 'Get-Content hosts.txt', 'docker run --add-host db:1.2.3.4 img']
+  const quiet = [
+    'git status',
+    'git log --oneline -3',
+    'git remote -v',
+    'git commit -m "fix the push hole"',
+    'gh --version',
+    'gh auth status',
+    'gh config get editor',
+    'svn status',
+    'echo the host is up',
+    'Get-Content hosts.txt',
+    'docker run --add-host db:1.2.3.4 img',
+  ]
   for (const command of quiet) {
     assert.equal(inspectEgress({ toolName: 'pwsh', args: { command }, allowlist: [] }), undefined, command)
   }
+})
+check('egress: a network client with a readable URL is an ordinary host check', () => {
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'Invoke-WebRequest https://example.com/a' }, allowlist: ['example.com'] }), undefined)
+  // The same client with an unreadable destination still asks.
+  assert.equal(inspectEgress({ toolName: 'pwsh', args: { command: 'Invoke-WebRequest -Uri $url' }, allowlist: ['example.com'] })?.opaque, true)
 })
 check('egress: a network client without a readable URL asks instead of passing', () => {
   for (const command of ['curl evil.test/a', 'wget evil.test/a', 'curl evil.test/a && curl ok.test']) {
@@ -428,6 +458,12 @@ check('egress: a fetch whose destination cannot be read asks, a search waits for
   // A search runs against the tool's own server: quiet until the turn is tainted.
   assert.equal(inspectEgress({ toolName: 'web_search', args: { query: 'weather' }, allowlist: [] }), undefined)
   assert.equal(inspectEgress({ toolName: 'web_search', args: { query: 'weather' }, allowlist: [], tainted: true })?.opaque, true)
+})
+check('egress: a machine-local URL scheme is a read, not a send', () => {
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: 'data:text/plain,hi' }, allowlist: [] }), undefined)
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: 'about:blank' }, allowlist: [] }), undefined)
+  // A path fragment that merely contains the word is not the scheme.
+  assert.equal(inspectEgress({ toolName: 'web_fetch', args: { url: 'https://example.com/data:x' }, allowlist: [] })?.host, 'example.com')
 })
 check('egress: interpreters are scanned like shells', () => {
   assert.equal(inspectEgress({ toolName: 'python', args: { command: 'print(1)' }, allowlist: [] }), undefined)
