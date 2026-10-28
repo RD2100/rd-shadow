@@ -10,11 +10,17 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const PATCH = path.join(ROOT, 'cordis.patch.yml')
-const SHADOW_DIR = 'D:\\DSH\\shadow'
+
+/** The package name the patch rows must reference; a rename has to reach both files. */
+const PACKAGE_NAME = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name
+
+/** The directory the shipped patch pins; deployments may override it. */
+const PATCH_SHADOW_DIR = 'D:\\DSH\\shadow'
 
 /** Resolve the YAML parser from a module name or a filesystem path. */
 function yamlSpecifier() {
@@ -85,20 +91,27 @@ check('the shadow preset row exists and keeps its persona', () => {
   }
 })
 
-check('the dispatch tools row is in the preset after tool-goal', () => {
+check('the dispatch tools row is rooted at the package name', () => {
   const at = ids.indexOf('shadow-tools')
   if (at < 0) throw new Error('missing shadow-tools row')
   if (ids[at - 1] !== 'tool-goal') throw new Error(`shadow-tools must follow tool-goal, found ${ids[at - 1]}`)
   const row = plugins[at]
-  if (row.name !== 'dsh-plugin-shadow/tools') throw new Error(`unexpected tools row name ${row.name}`)
-  if (row.config?.shadowDir !== SHADOW_DIR) throw new Error(`tools shadowDir must be ${SHADOW_DIR}, got ${String(row.config?.shadowDir)}`)
+  const expected = `${PACKAGE_NAME}/tools`
+  if (row.name !== expected) {
+    throw new Error(`tools row must be "${expected}" (package.json name + /tools), found "${String(row.name)}" — a package rename has to reach this row`)
+  }
+  if (row.config?.shadowDir !== PATCH_SHADOW_DIR) {
+    throw new Error(`tools shadowDir must be ${PATCH_SHADOW_DIR}, got ${String(row.config?.shadowDir)}`)
+  }
 })
 
 check('the host row keeps its directory and permission identity', () => {
   const host = byId.get('shadow')
   if (host === undefined) throw new Error('missing shadow row')
-  if (host.name !== 'dsh-plugin-shadow') throw new Error(`unexpected host row name ${host.name}`)
-  if (host.config?.shadowDir !== SHADOW_DIR) throw new Error(`host shadowDir must be ${SHADOW_DIR}`)
+  if (host.name !== PACKAGE_NAME) {
+    throw new Error(`host row must be "${PACKAGE_NAME}" (package.json name), found "${String(host.name)}" — a package rename has to reach this row`)
+  }
+  if (host.config?.shadowDir !== PATCH_SHADOW_DIR) throw new Error(`host shadowDir must be ${PATCH_SHADOW_DIR}`)
   if (host.config?.permissionPreset !== 'auto') throw new Error('host permissionPreset must stay "auto"')
   if (host.config?.shadowPresetId !== 'shadow') throw new Error('host shadowPresetId must stay "shadow"')
 })
