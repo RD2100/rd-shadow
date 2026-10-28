@@ -88,6 +88,7 @@ Everything is configured on the plugin rows in `cordis.patch.yml`:
 - If you omit `shadowDir`, the host side falls back to `<home>/dsh-shadow`; **the browser half requires an explicit value**, so please write the line.
 - First use creates that directory's workspace; using it again reuses it instead of registering a duplicate.
 - `enforcePermissionPreset` (default `true`): every Session creation/resume writes `permissionPreset` back. **If you switch presets by hand (for example to `danger-full-access`), set it to `false`** — the plugin then pins only Sessions whose log records no permission choice yet, and your manual switch survives.
+- The two egress settings: `egressAllowlist` (empty by default = ask every time) and `protectedPaths` (seven fragments by default) are covered in the next two sections; `taintScope` (default `session`) decides how long the "read protected data" mark lasts.
 
 ---
 

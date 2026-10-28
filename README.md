@@ -88,6 +88,7 @@ dsh plugin --profile web add <npm 包名 | git 地址 | 绝对路径>
 - 省略 `shadowDir` 时 host 侧用默认 `<家目录>/dsh-shadow`；**浏览器半边不支持默认值**，所以请显式写一行。
 - 首次使用会在该目录创建 workspace；再点一次会复用，不会重复注册。
 - `enforcePermissionPreset`（默认 `true`）：每次会话被创建/恢复都把权限改回 `permissionPreset`。**如果你会手动切 `danger-full-access`，把它设为 `false`**——那样插件只钉那些日志里还没有权限选择的会话，你的手动切换会被保留。
+- 出网相关的两项：`egressAllowlist`（默认空 = 每次都问）与 `protectedPaths`（默认七个片段）见下面两节；`taintScope`（默认 `session`）决定「读过敏感文件」这个标记持续多久。
 
 ---
 
