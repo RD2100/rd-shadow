@@ -363,17 +363,31 @@ npm run judge                   # 全自动一轮：判定 → 通过就重启�
   就是「这一轮说完了」。因此把 `npm run judge` 放在一轮对话的最后一步，重启就不会
   拦腰斩断对话。详见 `E2E-GUARD.md`「重启裁判」一节。
 
+- **改规则连重启都不用**（0.8.0）：绝大多数改动只动 `lib/dispatch-core.js`——纯判断核，
+  无 host 依赖——而宿主半边一个字都没变。守卫每 5 秒看一眼磁盘上那份核，字节变了就换上，
+  并在日志里自报换上了哪一份。所以：
+
+  ```sh
+  npm run sync -- --profile '<profile>'          # 部署新规则
+  npm run judge -- live                          # 不重启，核对现在生效的是哪一份字节
+  ```
+
+  这条路的安全性质：**读坏不换**（新核语法错误或缺导出，就保留当前那份并记下原因）、
+  **判断失败即拒绝**（核换上去之后抛错，该次调用以「出网检查本身失败」拒绝）。
+  改了宿主半边（注册、工具、补丁、版本号）仍然必须走重启那条路。
+
 ### 目录结构
 
 ```
 lib/index.js         host 半边：给影子目录里的会话钉权限身份
 lib/tools.js         三个模型可见工具的注册与效应
 lib/dispatch-core.js 纯判断核（无 host 依赖，可被 plain Node 直接导入）
+lib/live-core.js     可热换的判断核：改规则不必重启宿主
 lib/shadow-dir.js    「影子目录」规则的唯一所有者
 lib/build-stamp.js   构建戳：挂载时自报加载了哪些字节
 lib/client.js        浏览器半边：侧栏入口与面板
 cordis.patch.yml     preset + 三条插件行
-scripts/verify-and-restart.mjs  重启裁判：判定 → 重启 → 核对宿主自报行
+scripts/verify-and-restart.mjs  重启裁判：判定 → 重启 → 核对宿主自报行；live 子命令不重启只核对
 scripts/restart-host.mjs        重启 worker：在宿主进程树之外拉起应用并核对
 tests/               离线验证资产
 DESIGN.md            设计（不变量、权限模型、里程碑）

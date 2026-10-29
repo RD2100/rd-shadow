@@ -67,11 +67,13 @@ const changed = await stampOf(first, '?v=2')
 check('a changed module changes the stamp', changed.hash !== own?.hash, `${String(own?.hash)} -> ${String(changed.hash)}`)
 
 // 4. An added module changes the stamp too, even when every existing file is
-// untouched — a new file the hash ignored would be a silent guard change.
-mkdirSync(path.join(second, 'later'), { recursive: true })
-cpSync(path.join(LIB, 'tools.js'), path.join(second, 'later', 'tools.js'))
+// untouched — a new file the hash ignored would be a silent guard change. The
+// listing is not recursive on purpose: only the runtime directory counts, so the
+// added module has to sit beside the others to be seen at all.
+cpSync(path.join(LIB, 'tools.js'), path.join(second, 'later.js'))
 const added = await stampOf(second, '?v=2')
-check('an added module changes the stamp', added.files === own?.files, `expected ${String(own?.files)} files, got ${String(added.files)}`)
+check('an added module changes the stamp', added.hash !== own?.hash && added.files === (own?.files ?? 0) + 1,
+  `expected ${String(own?.files)} files, got ${String(added.files)}`)
 
 // 5. Unreadable files cost the line, never the mount: a name the listing reports
 // but the read cannot open (here, a directory standing in for a module) must

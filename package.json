@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-shadow",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "private": false,
   "type": "module",
   "description": "Shadow coordinator: supervise work across your projects and dispatch messages to other Sessions, with explicit selection and audit-ready delivery receipts",

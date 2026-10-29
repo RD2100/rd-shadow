@@ -23,7 +23,8 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const LIB = path.join(ROOT, 'lib')
 
 const {
-  appendLedger, deployedHash, expectedHash, judge, parseArgs, pendingArm, readLedger, runAll, runJudge,
+  appendLedger, coreHashOf, deployedHash, expectedHash, gitList, judge, parseArgs, pendingArm, readLedger,
+  runAll, runJudge, runLive, waitForLiveCore,
 } = await import(pathToFileURL(path.join(ROOT, 'scripts', 'verify-and-restart.mjs')).href)
 
 let failures = 0
@@ -103,6 +104,10 @@ function deploy(staged) {
  * A deployed copy built from a commit's own bytes, which is what a correct sync
  * produces. The self-checks below judge against this rather than the working
  * tree: an uncommitted version bump must fail the judge, not silently pass.
+ *
+ * The file list comes from the commit, not from the directory on disk: a module
+ * that exists in the working tree but not in that commit has no bytes to
+ * materialise, and a deployed copy must contain exactly what the commit holds.
  * @param {string} commit - the commit to materialise.
  * @param {string} repoRoot - the repository holding it.
  * @returns {string} the deployed directory.
@@ -110,9 +115,9 @@ function deploy(staged) {
 function deployCommit(commit, repoRoot) {
   const target = scratch('deployed-commit')
   mkdirSync(path.join(target, 'lib'), { recursive: true })
-  for (const name of readdirSync(path.join(repoRoot, 'lib')).filter((n) => n.endsWith('.js'))) {
-    const bytes = execFileSync('git', ['show', `${commit}:lib/${name}`], { cwd: repoRoot, encoding: 'buffer' })
-    writeFileSync(path.join(target, 'lib', name), bytes)
+  for (const relative of gitList(commit, 'lib', repoRoot)) {
+    const bytes = execFileSync('git', ['show', `${commit}:${relative}`], { cwd: repoRoot, encoding: 'buffer' })
+    writeFileSync(path.join(target, relative), bytes)
   }
   writeFileSync(path.join(target, 'cordis.patch.yml'), execFileSync('git', ['show', `${commit}:cordis.patch.yml`], { cwd: repoRoot, encoding: 'buffer' }))
   writeFileSync(path.join(target, 'package.json'), execFileSync('git', ['show', `${commit}:package.json`], { cwd: repoRoot, encoding: 'buffer' }))
@@ -268,6 +273,66 @@ check('a missing deployed copy fails', !judge(staged.commit, path.join(staged.re
   check('an arm that already ran is not pending again', pendingArm(entries) === undefined)
   check('a fresh arm is pending', pendingArm([{ kind: 'arm', commit: 'bbb' }])?.commit === 'bbb')
   check('nothing armed is not pending', pendingArm([]) === undefined)
+}
+
+// 15. 不重启的那条路：只改判断核时，守卫自己换上磁盘上那份并自报哈希。
+// 判据是「截止时刻之后最后一行 live core 等于部署副本那个文件的哈希」——
+// 挂载那一行和热换那一行都可能落在截止之后，所以必须是最后一行算，
+// 否则改回去会被挂载时的旧哈希救成「通过」。
+{
+  const target = deploy(staged)
+  const home = scratch('home3')
+  mkdirSync(path.join(home, 'logs'), { recursive: true })
+  const log = path.join(home, 'logs', 'desktop-next.log')
+  const ledger = path.join(scratch('ledger5'), 'ledger.jsonl')
+  const coreHash = coreHashOf(target)
+  const armed = { commit: staged.commit, since: '2026-01-01T00:00:00.000Z' }
+  check('the deployed core hash is readable', typeof coreHash === 'string' && coreHash.length === 12, String(coreHash))
+
+  writeFileSync(log, [
+    '2026-01-01T00:00:01.000Z [info] shadow: live core aaaaaaaaaaaa at mount; the outbound rules come from this file',
+    `2026-01-01T00:00:02.000Z [info] shadow: live core ${String(coreHash)} (was aaaaaaaaaaaa); the outbound rules changed without a restart`,
+    '',
+  ].join('\n'))
+  const swapped = await waitForLiveCore(home, coreHash, armed.since)
+  check('a swap after the cutoff is accepted', swapped.ok, swapped.detail)
+
+  writeFileSync(log, `${readFileSync(log, 'utf8')}2026-01-01T00:00:03.000Z [info] shadow: live core bbbbbbbbbbbb (was ${String(coreHash)}); the outbound rules changed without a restart\n`)
+  const diverged = await waitForLiveCore(home, coreHash, armed.since)
+  check('the last line wins, so a later divergence fails', !diverged.ok && /bbbbbbbbbbbb/.test(diverged.detail), diverged.detail)
+
+  writeFileSync(log, '2026-01-01T00:00:04.000Z [info] host: something else entirely\n')
+  const silent = await waitForLiveCore(home, coreHash, armed.since)
+  check('no live-core line fails rather than guessing', !silent.ok, silent.detail)
+
+  writeFileSync(log, `2026-01-01T00:00:05.000Z [info] shadow: live core ${String(coreHash)} (was bbbbbbbbbbbb); the outbound rules changed without a restart\n`)
+  const back = await waitForLiveCore(home, coreHash, armed.since)
+  check('swapping back to the expected bytes passes again', back.ok, back.detail)
+}
+
+// 16. live 把结论写进小本本，dry run 什么都不写——和别的动作同一条规矩。
+{
+  const target = deploy(staged)
+  const home = scratch('home4')
+  mkdirSync(path.join(home, 'logs'), { recursive: true })
+  const log = path.join(home, 'logs', 'desktop-next.log')
+  const coreHash = coreHashOf(target)
+  writeFileSync(log, `2026-01-01T00:00:06.000Z [info] shadow: live core ${String(coreHash)} at mount\n`)
+  const armed = { commit: staged.commit, since: '2026-01-01T00:00:00.000Z' }
+
+  const written = path.join(scratch('ledger6'), 'ledger.jsonl')
+  const ok = await runLive({ dryRun: false, deployed: target, dshHome: home, repoRoot: staged.repo }, home, written, armed)
+  const outcomes = readLedger(written).filter((entry) => entry.kind === 'outcome')
+  check('a live round is recorded with its own stage', ok.ok && outcomes.length === 1 && outcomes[0].stage === 'live' && outcomes[0].ok === true, ok.detail)
+
+  const dry = path.join(scratch('ledger7'), 'ledger.jsonl')
+  const rehearsed = await runLive({ dryRun: true, deployed: target, dshHome: home, repoRoot: staged.repo }, home, dry, armed)
+  check('a dry live round writes nothing', rehearsed.ok && !existsSync(dry), rehearsed.detail)
+
+  const unreadable = path.join(scratch('deployed-empty'), 'lib')
+  mkdirSync(unreadable, { recursive: true })
+  const missing = await runLive({ dryRun: true, deployed: path.dirname(unreadable), dshHome: home, repoRoot: staged.repo }, home, dry, armed)
+  check('a deployed copy without the core fails by name', !missing.ok && /dispatch-core\.js/.test(missing.detail), missing.detail)
 }
 
 // Remove the scratch roots and nothing else: each one is a direct child of the

@@ -23,6 +23,12 @@ const suites = [
   // its contract — the number follows the bytes — is pinned here rather than
   // trusted.
   { label: 'build-stamp', args: [path.join(TESTS, 'build-stamp.test.mjs')] },
+  // Changing the outbound rules must not cost a host restart, because the plugin
+  // and the live conversation share the host process. The three properties that
+  // make that safe — a changed file is picked up, a broken file never replaces a
+  // working one, and the reported hash is the hash of the bytes in effect — are
+  // pinned here against scratch copies, never against the checkout.
+  { label: 'live-core', args: [path.join(TESTS, 'live-core.test.mjs')] },
   // The restart judge decides when the host may be restarted; its contract is
   // "only for bytes a named commit contains", and the round runs end to end
   // against a fake host so no test ever touches a real process.

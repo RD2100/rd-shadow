@@ -29,8 +29,14 @@
  *   node scripts/verify-and-restart.mjs                       全自动：判定 → 通过就把重启交给 worker
  *   node scripts/verify-and-restart.mjs judge                 只判定「允许重启吗」
  *   node scripts/verify-and-restart.mjs verify                只核对「宿主加载对了吗」
+ *   node scripts/verify-and-restart.mjs live                  不重启：只核对守卫此刻生效的是哪一份核
  *   node scripts/verify-and-restart.mjs watch                 挂上之后：每个新 arm 自己跑完全程
  *   node scripts/verify-and-restart.mjs status                看小本本
+ *
+ * `live` 是 0.8.0 加的那条路。只改判断核（lib/dispatch-core.js）时宿主根本不必重启：
+ * 守卫每 5 秒看一眼磁盘，字节变了就换上并在日志里自报 `shadow: live core <hash>`。
+ * live 核对的就是那一行，所以改规则不再打断任何对话。改了宿主半边（注册、工具、
+ * 补丁、版本号）仍然必须走重启那条路。
  *
  * 跑完默认动作后，杀进程与核对都在 worker 手里，裁判活不过那一下 taskkill；
  * 用 `status` 看 relaunch 与 verify 两行的结局。
@@ -71,7 +77,7 @@ function parseArgs(argv) {
     else if (arg === '--ledger') out.ledger = argv[++i]
     else if (arg === '--dsh-home') out.dshHome = argv[++i]
     else if (arg === '--repo-root') out.repoRoot = argv[++i]
-    else if (['arm', 'judge', 'verify', 'all', 'watch', 'status'].includes(arg)) out.action = arg
+    else if (['arm', 'judge', 'verify', 'live', 'all', 'watch', 'status'].includes(arg)) out.action = arg
     else throw new Error(`unknown argument: ${arg}`)
   }
   return out
@@ -383,6 +389,77 @@ async function runVerify(options, home, ledger, armed) {
 }
 
 /**
+ * 部署副本里判断核的哈希。和 expectedHash 不同：那个把某个提交的 lib/ 落到临时
+ * 目录让 build-stamp.js 算整目录的戳，这里只算一个文件——热换换的就是这一个文件，
+ * 判据也必须精确到这一个文件。
+ * @param {string} target - 部署副本目录。
+ * @returns {string | null} 12 位十六进制；读不到时为 null。
+ */
+function coreHashOf(target) {
+  const file = path.join(target, 'lib', 'dispatch-core.js')
+  const bytes = readIfExists(file)
+  return bytes === null ? null : hashOf(bytes).slice(0, 12)
+}
+
+/**
+ * 等守卫自报「我现在生效的是这一份核」。
+ *
+ * 这一行只在核真的换过之后才出现：`shadow: live core <hash> (was <old>)`。
+ * 没换过就没有行——而那正是想要的结果（生效的本来就是对的字节），所以判据是
+ * 「截止时刻之后最后一行 live core 等于期望值」，没有行也算不过，并说清原因。
+ * @param {string} home - DSH 主目录。
+ * @param {string} expected - 期望的核哈希。
+ * @param {string} [since] - 截止时刻（ISO）；空串表示整份日志都算。
+ * @returns {Promise<{ok: boolean, detail: string}>} 核对结果。
+ */
+async function waitForLiveCore(home, expected, since = '') {
+  const deadline = Date.now() + READY_TIMEOUT_MS
+  let last = 'waiting for the guard to report its live core'
+  while (Date.now() < deadline) {
+    const file = hostLog(home)
+    const text = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    const fresh = afterCutoff(text, since)
+    const found = [...fresh.matchAll(/shadow: live core ([0-9a-f]{12})/g)]
+    if (found.length > 0) {
+      const reported = found[found.length - 1][1]
+      if (reported === expected) {
+        return { ok: true, detail: `the guard is running core ${expected} without a restart` }
+      }
+      last = `the guard is running core ${reported}, not ${expected}`
+    } else {
+      last = fresh.length === 0 ? 'no new log lines yet' : 'new log lines, but the guard has not reported a live core yet'
+    }
+    await sleep(POLL_MS)
+  }
+  return { ok: false, detail: `${last}; gave up after ${READY_TIMEOUT_MS / 1000}s` }
+}
+
+/**
+ * 一次核对：不重启，只看现在生效的是哪一份字节。
+ *
+ * 判据是部署副本自己的 lib/dispatch-core.js，不是某个提交——因为这一条路回答的
+ * 问题是「宿主此刻在跑什么」，而字节在磁盘上，不在 git 里。想连「这些字节确实
+ * 来自那个提交」一起问，先跑 judge。
+ * @param {object} options - 运行参数。
+ * @param {string} home - DSH 主目录。
+ * @param {string} ledger - 小本本路径。
+ * @param {{commit: string, since?: string}} armed - 当前记着的那一条。
+ * @returns {Promise<{ok: boolean, detail: string, stage: string}>} 结局。
+ */
+async function runLive(options, home, ledger, armed) {
+  const target = deployedDir(home, options.deployed)
+  const expected = coreHashOf(target)
+  if (expected === null) {
+    const detail = 'cannot read lib/dispatch-core.js from the deployed copy'
+    if (!options.dryRun) appendLedger(ledger, { kind: 'outcome', commit: armed.commit, ok: false, stage: 'live', detail })
+    return { ok: false, detail, stage: 'live' }
+  }
+  const result = await waitForLiveCore(home, expected, typeof armed.since === 'string' ? armed.since : '')
+  if (!options.dryRun) appendLedger(ledger, { kind: 'outcome', commit: armed.commit, ok: result.ok, stage: 'live', detail: result.detail })
+  return { ...result, stage: 'live' }
+}
+
+/**
  * @param {object} options - 运行参数。
  * @returns {Promise<{home: string, ledger: string, armed?: {commit: string}}>} 环境与当前记着的那一条。
  */
@@ -611,6 +688,14 @@ async function main() {
     return
   }
 
+  if (options.action === 'live') {
+    // 不重启的那条路：只改了判断核时，守卫自己会换上磁盘上那份并自报哈希。
+    const result = await runLive(options, home, ledger, armed)
+    console.log(`${result.ok ? 'ok' : 'not ok'}: ${result.detail}`)
+    if (!result.ok) process.exitCode = 1
+    return
+  }
+
   if (options.action === 'watch') {
     console.log('watching the ledger; every new arm that matches the deployed copy runs the whole round by itself')
     for (;;) {
@@ -636,7 +721,7 @@ const invokedDirectly = process.argv[1] !== undefined
 if (invokedDirectly) await main()
 
 export {
-  appendLedger, deployedDir, deployedHash, dshHome, expectedHash, gitList, gitShow, hostLog, judge,
-  ledgerPath, messageOf, parseArgs, pendingArm, readLedger, restartApp, runAll, runJudge,
-  runVerify, spawnWorkerOutsideTree, waitForHost, workerCommand,
+  appendLedger, coreHashOf, deployedDir, deployedHash, dshHome, expectedHash, gitList, gitShow, hostLog, judge,
+  ledgerPath, messageOf, parseArgs, pendingArm, readLedger, restartApp, runAll, runJudge, runLive,
+  runVerify, spawnWorkerOutsideTree, waitForHost, waitForLiveCore, workerCommand,
 }

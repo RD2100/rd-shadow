@@ -83,7 +83,10 @@ check('runtime imports stay inside the published set', () => {
   // node:fs is here deliberately: the script resolver reads package.json and
   // Makefile so `npm run release` can be judged by what it runs. It is a
   // builtin, so the published set still stands alone.
-  const allowedBare = new Set(['@deepseek-ai/dsh-tools', 'node:os', 'node:path', 'node:crypto', 'node:util', 'node:fs'])
+  // node:url is here for the same reason: the live core re-imports a module by
+  // URL, and on Windows an absolute path is not a valid URL — pathToFileURL is
+  // the only correct way to build one. Builtin, so the set still stands alone.
+  const allowedBare = new Set(['@deepseek-ai/dsh-tools', 'node:os', 'node:path', 'node:crypto', 'node:util', 'node:fs', 'node:url'])
   // The dev scripts are published so an installation can run the same judge; their
   // imports must therefore stay inside the builtins plus the package's own files.
   // The full builtin list is allowed here, unlike the runtime one above, because a

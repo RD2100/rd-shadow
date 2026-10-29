@@ -350,17 +350,28 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
 
   The worker also **waits for the host log to fall quiet before it kills** (120s by default, 15 minutes at most): the plugin and the live conversation share the host process, so killing the host cuts the current turn in half, and a quiet log is the host's way of saying "this turn is over" (it writes nothing at all when idle). So run `npm run judge` as the last step of a turn and the restart will not interrupt it. See "Restart judge" in [E2E-GUARD.md](E2E-GUARD.md).
 
+- **Changing the rules needs no restart at all** (0.8.0): most edits touch only `lib/dispatch-core.js` — the pure decision core, with no host dependencies — while the host half does not change at all. The guard looks at that file every 5 seconds, swaps it in when the bytes differ, and reports which bytes it swapped to. So:
+
+  ```sh
+  npm run sync -- --profile '<profile>'          # deploy the new rules
+  npm run judge -- live                          # no restart: verify which bytes are in effect
+  ```
+
+  The safety properties on this path: **a broken file never replaces a working one** (a syntax error, or a missing export, keeps the current core and records why), and **a failing check refuses the call** (an exception after a swap denies that call as "the outbound check itself failed"). Editing the host half — registrations, tools, the patch, the version — still takes the restart path.
+
 ### Layout
 
 ```
 lib/index.js         host half: pins the permission identity of Sessions in the shadow directory
 lib/tools.js         registration and effects for the three model-visible tools
 lib/dispatch-core.js pure judgement core (no host dependency; importable by plain Node)
+lib/live-core.js     the swappable core: changing the rules needs no host restart
 lib/shadow-dir.js    the single owner of the shadow-directory rule
 lib/build-stamp.js   the build stamp: reports at mount which bytes it loaded
+lib/live-core.js     the swappable core: changing the rules needs no host restart
 lib/client.js        browser half: sidebar entry and panel
 cordis.patch.yml     preset + three plugin rows
-scripts/             sync and pack checks, plus the restart judge
+scripts/             sync and pack checks, plus the restart judge (and its restart-free `live` check)
 scripts/restart-host.mjs   the restart worker: relaunches outside the host's process tree and confirms
 tests/               offline verification assets
 DESIGN.md            design (invariants, permission model, milestones)  — Chinese
