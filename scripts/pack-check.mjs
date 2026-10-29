@@ -18,9 +18,9 @@ const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 
 /**
- * The documents an installation receives. The README links to E2E-GUARD.md and
- * the design record, so a tarball without them would ship a README pointing at
- * files nobody has.
+ * The documents an installation receives. The README links to E2E-GUARD.md,
+ * the design record, and the DSH engineering backlog, so a tarball without
+ * them would ship a README pointing at files nobody has.
  */
 const DOCS = [
   'README.md',
@@ -31,6 +31,7 @@ const DOCS = [
   'DISPATCH-SPEC.md',
   'DISPATCH-ABSORPTION.md',
   'SELFTEST.md',
+  'docs/DSH-改造待办.md',
 ]
 
 let failures = 0
