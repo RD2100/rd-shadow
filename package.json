@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-shadow",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": false,
   "type": "module",
   "description": "Shadow coordinator: supervise work across your projects and dispatch messages to other Sessions, with explicit selection and audit-ready delivery receipts",
@@ -61,7 +61,8 @@
     "test:deployed": "node tests/run.mjs --deployed",
     "pack:check": "node scripts/pack-check.mjs",
     "fingerprint": "node scripts/fingerprint.mjs",
-    "sync": "node scripts/sync.mjs"
+    "sync": "node scripts/sync.mjs",
+    "judge": "node scripts/verify-and-restart.mjs"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"

@@ -281,7 +281,12 @@ npm run pack:check              # 只验发布产物：files 覆盖、入口存�
 node tests/run.mjs --deployed   # 额外对已安装副本再跑一遍（需 SHADOW_PROFILE_TOOLS）
 npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自动验证
 npm run fingerprint             # 打印本仓库运行代码的内容哈希，与宿主日志里的 build 行比对
+npm run judge                   # 全自动一轮：判定 → 通过就重启宿主 → 核对宿主自报行
 ```
+
+改一行 `lib/*.js` 之后的最短闭环：`npm test` → `npm run sync` → `git commit` → `npm run judge`。
+最后一条自己判定「部署副本是否等于这个提交」，通过才重启，再核对宿主日志里的
+`shadow: build <哈希>`，全程记进 `<DSH_HOME>/.shadow-verify/ledger.jsonl`。
 
 | 套件 | 覆盖 |
 |---|---|
@@ -292,6 +297,7 @@ npm run fingerprint             # 打印本仓库运行代码的内容哈希，�
 | `tests/tools-sim.mjs` | 真实 `lib/tools.js` + 假宿主：投递/幂等/拒绝码/并发串行化/目录列举，以及守卫挂在 `tools/pre-execute` 上的行为（问人后放行、被拒即停、无审批通道拒绝、审批抛错拒绝、**守卫自身抛错也拒绝且不弹窗**、白名单不问、不触网不问；`npm run`/`make` 脚本体解析、`statefulShell` 跨调用记忆、调遣把污点带给目标会话） |
 | `tests/patch.check.mjs` | 解析 `cordis.patch.yml`（含 `!!js`），断言影子行完好；需要 `js-yaml`（`npm install` 后即可，也可用 `JS_YAML` 指定模块路径） |
 | `tests/build-stamp.test.mjs` | 构建戳的契约：哈希跟着字节走（改一个字节、加一个文件都会变），读不到时报 null 而不是炸掉挂载 |
+| `tests/verify-restart.test.mjs` | 重启裁判的契约：只有「部署副本逐字节等于某个提交」才放行；用一个假宿主把全自动那一轮跑通，并钉住「判定不过就绝不动手」 |
 
 仿真器用 `tests/dsh-tools-stub.mjs` 复刻官方 author-schema 校验——工具定义若在真实注册处会抛错，测试里同样会抛。
 
@@ -339,6 +345,14 @@ npm run fingerprint             # 打印本仓库运行代码的内容哈希，�
     node tests/run.mjs --deployed
   ```
 
+- **重启也可以不点**：`npm run judge` 把「该重启吗 → 重启 → 生效了吗」一条命令跑完。
+  它先判定部署副本的每个字节是否等于你指定的那个提交（含 `cordis.patch.yml` 与版本号），
+  通过才重启宿主，再核对宿主自报的 `shadow: build <哈希>`；全程写进小本本
+  （`<DSH_HOME>/.shadow-verify/ledger.jsonl`，`npm run judge status` 查看）。
+  代价说清楚：它不等应用体面退出，万一有别的任务在跑会被硬断——产品自带的
+  「退出并重启」要人确认的就是这件事。要体面那一下，就自己点托盘，然后跑
+  `npm run judge -- verify` 让裁判核对。详见 `E2E-GUARD.md`「重启裁判」一节。
+
 ### 目录结构
 
 ```
@@ -346,8 +360,10 @@ lib/index.js         host 半边：给影子目录里的会话钉权限身份
 lib/tools.js         三个模型可见工具的注册与效应
 lib/dispatch-core.js 纯判断核（无 host 依赖，可被 plain Node 直接导入）
 lib/shadow-dir.js    「影子目录」规则的唯一所有者
+lib/build-stamp.js   构建戳：挂载时自报加载了哪些字节
 lib/client.js        浏览器半边：侧栏入口与面板
 cordis.patch.yml     preset + 三条插件行
+scripts/verify-and-restart.mjs  重启裁判：判定 → 重启 → 核对宿主自报行
 tests/               离线验证资产
 DESIGN.md            设计（不变量、权限模型、里程碑）
 DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验证记录）

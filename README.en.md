@@ -282,7 +282,11 @@ npm run pack:check              # published artifact only: files coverage, entry
 node tests/run.mjs --deployed   # additionally verify the installed copy (needs SHADOW_PROFILE_TOOLS)
 npm run sync -- --profile <profile dir>   # copy into the profile and verify in one step
 npm run fingerprint             # print this checkout's code hash, compare it with the host log's build line
+npm run judge                   # one automatic round: judge → restart the host → confirm its own report
 ```
+
+Shortest loop after changing one line of `lib/*.js`: `npm test` → `npm run sync` → `git commit` → `npm run judge`.
+The last one decides for itself whether the deployed copy equals that commit, restarts only if it does, then confirms the host's own `shadow: build <hash>` line, recording the whole round in `<DSH_HOME>/.shadow-verify/ledger.jsonl`.
 
 | Suite | Covers |
 |---|---|
@@ -293,6 +297,7 @@ npm run fingerprint             # print this checkout's code hash, compare it wi
 | `tests/tools-sim.mjs` | The real `lib/tools.js` against a fake host: delivery, idempotency, rejection codes, per-target serialization, catalog listing, and the guard mounted on `tools/pre-execute` (pass after approval, stop on rejection, refuse without an approval channel, refuse when the approval throws, **refuse when the guard itself throws without prompting**, no question for allowlisted hosts, no question for offline tools; `npm run`/`make` script-body resolution, `statefulShell` cross-call memory, and taint carried by dispatch) |
 | `tests/patch.check.mjs` | Parses `cordis.patch.yml` (including `!!js`) and asserts the shadow rows are intact; needs `js-yaml` (installed via `npm install`, or point `JS_YAML` at it) |
 | `tests/build-stamp.test.mjs` | The build stamp's contract: the hash follows the bytes (one changed byte, one added file, both move it), and unreadable files report null instead of breaking the mount |
+| `tests/verify-restart.test.mjs` | The restart judge's contract: a restart is cleared only when the deployed copy equals a named commit byte for byte; the automatic round runs end to end against a fake host, and "no judge pass, no restart" is pinned by counting the fake's calls |
 | `scripts/pack-check.mjs` | The published artifact: every `lib/*.js` included, entry points exist, runtime imports stay inside the shipped set, a copy of only those files still passes the tools suite |
 
 The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-schema validation — a tool definition that would throw at the real registration site throws here too.
@@ -338,6 +343,8 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
     node tests/run.mjs --deployed
   ```
 
+- **The restart can go without you too**: `npm run judge` runs "may I restart → restart → did it take effect" in one command. It first decides whether every byte of the deployed copy equals the commit you named (including `cordis.patch.yml` and the version), restarts the host only if it does, then confirms the host's own `shadow: build <hash>` line; the whole round lands in a ledger (`<DSH_HOME>/.shadow-verify/ledger.jsonl`, read it with `npm run judge status`). The cost, stated plainly: it does not wait for the app to quit cleanly, so another running task would be cut off — that is exactly what the product's own "Quit and Restart" asks a human to confirm. For the clean path, click the tray yourself and then run `npm run judge -- verify`. See "Restart judge" in [E2E-GUARD.md](E2E-GUARD.md).
+
 ### Layout
 
 ```
@@ -345,9 +352,10 @@ lib/index.js         host half: pins the permission identity of Sessions in the 
 lib/tools.js         registration and effects for the three model-visible tools
 lib/dispatch-core.js pure judgement core (no host dependency; importable by plain Node)
 lib/shadow-dir.js    the single owner of the shadow-directory rule
+lib/build-stamp.js   the build stamp: reports at mount which bytes it loaded
 lib/client.js        browser half: sidebar entry and panel
 cordis.patch.yml     preset + three plugin rows
-scripts/             sync and pack checks
+scripts/             sync and pack checks, plus the restart judge
 tests/               offline verification assets
 DESIGN.md            design (invariants, permission model, milestones)  — Chinese
 DISPATCH-SPEC.md     implementation spec (runtime contracts, state machine, idempotency, verification log) — Chinese
@@ -363,7 +371,7 @@ DISPATCH-SPEC.md     implementation spec (runtime contracts, state machine, idem
 - [x] English README
 - [x] CI running at least `npm test` (`.github/workflows/test.yml`, ubuntu/windows × node 22/24)
 - [ ] Translate the design docs (currently Chinese only)
-- [x] End-to-end verification of the egress guard (see [E2E-GUARD.md](E2E-GUARD.md)): the prompt, the judging method, the first run's results and the re-run path are all archived; the last link (confirming the fix inside a shadow Session) is still open
+- [x] End-to-end verification of the egress guard (see [E2E-GUARD.md](E2E-GUARD.md)): the prompt, the judging method, the first run's results and the re-run path are all archived; the last link (confirming the fix inside a shadow Session) is still open for judgement-logic changes, while rounds that only touch plumbing run with zero human steps via `npm run judge`
 
 ### Publishing to npm
 

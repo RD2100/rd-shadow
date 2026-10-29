@@ -23,6 +23,10 @@ const suites = [
   // its contract — the number follows the bytes — is pinned here rather than
   // trusted.
   { label: 'build-stamp', args: [path.join(TESTS, 'build-stamp.test.mjs')] },
+  // The restart judge decides when the host may be restarted; its contract is
+  // "only for bytes a named commit contains", and the round runs end to end
+  // against a fake host so no test ever touches a real process.
+  { label: 'verify-restart', args: [path.join(TESTS, 'verify-restart.test.mjs')] },
   { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
   // The fuzz generates the spellings the hand-written suites would have to
   // think of, and asserts both halves: a call that reaches the network is never
