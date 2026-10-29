@@ -218,7 +218,7 @@ So the plugin adds a **rule** ahead of the reviewer (a match, not a judgement):
 
 The point: **it checks the destination, not the payload**. Base64, splitting or re-encoding the content cannot change where a request goes, so this rule cannot be bypassed; a content regex can, which is why there is no content scan.
 
-**Scope**: the guard only applies to **shadow Sessions** — it is registered inside the `preset-shadow` agent preset's scope (see `cordis.patch.yml`), so your own sessions are untouched. That is deliberate: the shadow is the one that reads untrusted content (a web page, an issue, someone else's README); your sessions are trusted by definition. For the same reason no CLI or API can trigger the guard outside a shadow Session, so the end-to-end check has to run inside one (see `E2E-GUARD.md`).
+**Scope**: the guard only applies to **shadow Sessions** — it is registered inside the `preset-shadow` agent preset's scope (see `cordis.patch.yml`), so your own sessions are untouched. That is deliberate: the shadow is the one that reads untrusted content (a web page, an issue, someone else's README); your sessions are trusted by definition. For the same reason the CLI and the API cannot reach the guard **by default** — the headless runner composes no preset, measured rather than assumed (see `E2E-GUARD.md`). That is not an architectural ceiling: inserting the `shadow-tools` row at profile level mounts the guard in headless Sessions too, and this round measured it activating; what is still missing is the headless template's own tool-execution path.
 
 The default allowlist is empty, so every outbound request asks. Add hosts to stop being asked — but remember **an allowlist entry is itself a channel**.
 
@@ -281,6 +281,7 @@ npm test                        # all offline checks (core + preflight + sim + p
 npm run pack:check              # published artifact only: files coverage, entry points, runs from a copy
 node tests/run.mjs --deployed   # additionally verify the installed copy (needs SHADOW_PROFILE_TOOLS)
 npm run sync -- --profile <profile dir>   # copy into the profile and verify in one step
+npm run fingerprint             # print this checkout's code hash, compare it with the host log's build line
 ```
 
 | Suite | Covers |
@@ -291,6 +292,7 @@ npm run sync -- --profile <profile dir>   # copy into the profile and verify in 
 | `tests/dispatch-core.test.mjs` | Pure judgement core: identity derivation, messageId, evidence scan, state machine, rendering, and the **egress guard's** full decision set (allowlist, subdomains, localhost, credentials and ports, nested arguments; shell segment starts and the prose exemption, executable spans, command-head normalization, self-defining command lines, taint, fail-closed — including the 8 real calls recorded in the first end-to-end run; UNC shares, DNS name lookups, `npm run`/`make` script bodies, the second schemeless destination, nesting-depth fail-closed, and taint carried by dispatch) |
 | `tests/tools-sim.mjs` | The real `lib/tools.js` against a fake host: delivery, idempotency, rejection codes, per-target serialization, catalog listing, and the guard mounted on `tools/pre-execute` (pass after approval, stop on rejection, refuse without an approval channel, refuse when the approval throws, **refuse when the guard itself throws without prompting**, no question for allowlisted hosts, no question for offline tools; `npm run`/`make` script-body resolution, `statefulShell` cross-call memory, and taint carried by dispatch) |
 | `tests/patch.check.mjs` | Parses `cordis.patch.yml` (including `!!js`) and asserts the shadow rows are intact; needs `js-yaml` (installed via `npm install`, or point `JS_YAML` at it) |
+| `tests/build-stamp.test.mjs` | The build stamp's contract: the hash follows the bytes (one changed byte, one added file, both move it), and unreadable files report null instead of breaking the mount |
 | `scripts/pack-check.mjs` | The published artifact: every `lib/*.js` included, entry points exist, runtime imports stay inside the shipped set, a copy of only those files still passes the tools suite |
 
 The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-schema validation — a tool definition that would throw at the real registration site throws here too.
@@ -309,12 +311,15 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
 
   The files on disk are actually consistent; only HMR's module graph is stale. **A restart always recovers.** Symptom check: the log shows `did not activate`, and no later `shadow:` lines appear.
 
-  After a successful restart the log carries exactly these two lines, and they are worth their weight when diagnosing:
+  After a successful restart the log carries exactly these three lines, and they are worth their weight when diagnosing:
 
   ```
   shadow: directory /home/you/dsh-shadow   ← effective directory (is the config right?)
+  shadow: build <12 hex chars>             ← these are the bytes I loaded
   shadow: permission identity auto          ← auto available = the reviewer is mounted
   ```
+
+  The middle line is the **build stamp**: the host reporting the content hash of the `lib/*.js` it loaded. Compare it with `npm run fingerprint` after a restart — equal means the new code really is in place. It is harder evidence than file timestamps, because a copy edited afterwards, displaced by another copy, or half-synced all change the hash. If you would rather not run a probe at all, this line is the whole answer to "did my change take effect?".
 
   If the second line becomes a `using "danger-full-access" instead` warning, the profile does not mount `@deepseek-ai/dsh-experimental-auto-review` — and then the shadow runs with **full access and no review at all**.
 

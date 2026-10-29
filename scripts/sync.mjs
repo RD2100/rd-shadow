@@ -15,6 +15,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } fr
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { buildStamp } from '../lib/build-stamp.js'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 /** Installed package name; the checkout directory may be named differently. */
@@ -92,5 +93,11 @@ if (verification.status !== 0) {
 
 const bytes = files.reduce((sum, relative) => sum + statSync(path.join(ROOT, relative)).size, 0)
 console.log(`sync: ${(bytes / 1024).toFixed(1)} KiB verified`)
-console.log('sync: restart DSH to load this copy (HMR does not watch lib/*.js)')
-console.log('sync: after restarting, the log must show "shadow: directory <path>" and no "did not activate"')
+// What the host must log after the restart. Every earlier round answered "did
+// the new code load?" with a probe run and a decoded session log, which put an
+// operator in the loop; the fingerprint turns it into one grep. The hash covers
+// the files just copied, so it is the number this copy must produce.
+const stamp = buildStamp()
+console.log(`sync: after restarting, the log must show "shadow: build ${stamp?.hash ?? '<unreadable>'}" and "shadow: directory <path>", and no "did not activate"`)
+console.log('sync: HMR does not watch lib/*.js, so the restart is what loads this copy')
+

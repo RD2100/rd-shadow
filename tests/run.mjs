@@ -19,6 +19,10 @@ const suites = [
   { label: 'shadow-dir', args: [path.join(TESTS, 'shadow-dir.test.mjs')] },
   { label: 'host-preflight', args: [path.join(TESTS, 'host-preflight.test.mjs')] },
   { label: 'client', args: [path.join(TESTS, 'client.test.mjs')] },
+  // The fingerprint turns "did the restart load this code?" into a log line, so
+  // its contract — the number follows the bytes — is pinned here rather than
+  // trusted.
+  { label: 'build-stamp', args: [path.join(TESTS, 'build-stamp.test.mjs')] },
   { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
   // The fuzz generates the spellings the hand-written suites would have to
   // think of, and asserts both halves: a call that reaches the network is never

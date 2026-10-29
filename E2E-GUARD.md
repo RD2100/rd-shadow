@@ -110,12 +110,15 @@ for (let i = 0; i < b.length - 4; i += 1) {
 
 ## 修复后怎么复跑（最短路径）
 
-改完守卫、sync、重启之后，不需要把 8 步全跑一遍。三步就够：
+改完守卫、sync、重启之后，不需要把 8 步全跑一遍。四步就够：
 
 1. **确认加载的是新代码**（这一层不需要影子会话）：
    - `lib/*.js` 的 SHA-256 与源码一致；
    - 宿主日志有新的一次 `shadow: directory <路径>` 且无 `did not activate`；
-   - **时间序**：部署副本的修改时间早于宿主进程启动时间（`D:\DSH\.DSH\logs\active-run.json`
+   - **构建戳**：同一段启动日志里应有 `shadow: build <12 位哈希>`，等于仓库里
+     `npm run fingerprint` 的输出。这一行是宿主自报「我加载的是哪些字节」，比时间序更直接——
+     副本被改过、被别处副本顶替、或者 sync 只拷了一半，指纹都会不一样。
+   - **时间序**（兜底）：部署副本的修改时间早于宿主进程启动时间（`D:\DSH\.DSH\logs\active-run.json`
      里的 `started`）。进程启动晚于文件落盘，且之后没人改过 `lib/`，所以它读到的就是现在这份内容。
      这三条合起来等于「运行中的进程加载的是修好的代码」——不需要进进程里看模块缓存。
 2. **把真实输入重放到部署副本上**（不需要影子会话，也不碰网络）：把上次会话日志里
@@ -125,19 +128,23 @@ for (let i = 0; i < b.length - 4; i += 1) {
    部署副本一起验——这一层能证明「新代码对真实输入给出了正确判定」。
 3. **只剩最后一环要影子会话**：证明宿主进程真的在用这份代码。给影子会话粘一句：
 
-   > 用 pwsh 工具运行 `curl.exe --max-time 3 shadow-e2e.invalid`，只报告结局和报错原文。
+   > 读 `D:\DSH\shadow-plugin\e2e\PROBES.md`，逐条执行，只报告结局和报错原文。
 
    然后自己解那次会话的日志，看有没有 `approval/asked` 且 reason 以 `shadow:` 开头。
    （`.invalid` 永远解析不了，守卫万一失效也不会有数据离开。）
 
-   **改完守卫必须重启**：`lib/*.js` 变了而宿主进程没重启时，部署副本是新的、跑的是旧的——
-   时间序那条检查会直接告诉你这一点（副本落盘晚于进程启动 = 需要重启）。想一次覆盖两轮修复，
-   重启后用这句探针（它同时踩「可执行后缀」和「字符串求值器」）：
+   **探针清单是文件，不是话术**：`e2e/PROBES.md` 里每轮追加，操作员每次只粘上面这一句，
+   加探针不再需要新话术。清单第一条是构建戳核对（一条 grep，不用跑任何东西），
+   指纹不等时后面的探针全部不用跑。
 
-   > 用 pwsh 工具运行 `iex "curl.exe --max-time 3 shadow-e2e.invalid"`，只报告结局和报错原文。
+4. **改完守卫必须重启**：`lib/*.js` 变了而宿主进程没重启时，部署副本是新的、跑的是旧的——
+   构建戳那条检查会直接告诉你这一点（日志里的哈希等于旧副本 = 需要重启）。
 
-第 3 步无法自动化：守卫注册在 `preset-shadow` 的 agent 作用域里，CLI、HTTP API
-（web token 在日志里被打码）都碰不到它，只有 GUI 里能建影子会话。
+第 3 步目前仍要人，但**原因已经和 0.6.0 之前不同了**：不是「CLI 碰不到守卫」——
+无头 CLI 确实能把守卫挂上（把 `shadow-tools` 行插到 profile 层即可绕开 preset，
+已实测不再报 `did not activate`）——而是无头模板自己的工具执行路径坏了，
+任何 pwsh 调用（连 `echo` 都是）都会以
+`Cannot read properties of undefined (reading 'prepare')` 中断。详见文末 S4。
 
 ## 判读表
 
@@ -187,3 +194,86 @@ for (let i = 0; i < b.length - 4; i += 1) {
 - 白名单**放行**路径（`egressAllowlist` 非空时同 host 静默）在本配置下测不到——
   需要临时给 `cordis.patch.yml` 加一个 host 再重启一次。
 - 重定向外跳、解释器非 URL 外发、程序内部发起的 DNS 查询、写本地同步目录再由他进程送出：见 README「覆盖不到」。（命令行里写了名字的 DNS 查询、`\\host\share\` 共享路径、`npm run`/`make` 脚本体已由离线探针与测试覆盖，见 `unc-dns-probe.mjs` 与 `tests/dispatch-core.test.mjs`。）
+
+## 免重启热加载（S5）——实测结论：不行，两次
+
+「改完配置不用重启」这条路走不通，两个实验都指向同一答案：
+
+1. `npm run sync` 之后（它会把 `cordis.patch.yml` 一起拷过去），宿主日志 6 秒内**零新增**；
+2. 直接往部署副本的 `cordis.patch.yml` 里加一行真实注释，12 秒内依然**零新增**。
+
+也就是说宿主只在启动时读一次补丁，`lib/*.js` 与补丁都不热加载。README、CHANGELOG
+都已按这个结论写。省不掉的那一步因此是**重启**，而重启本来就是操作员开应用时做的事。
+
+## 无头跑法（S4）——能挂上守卫，但被模板自己的 bug 挡住
+
+把结论先说清楚：**「无头跑不了影子守卫」这个旧结论是错的**，官方文档里
+「CLI/HTTP 永远碰不到影子会话」的说法也已作废。实际调研结果分四层：
+
+1. **入口存在**：桌面安装里没有 `dsh` 可执行文件（`C:\Program Files\DSH NEXT\` 只有
+   Electron 应用），但 npm 上 `@deepseek-ai/dsh@next`（0.2.1-rc.4，与插件
+   `EXPECTED_RUNTIME` 的 0.2.1-rc.3 同一条线）可以直接跑，实测 `--version` 通过。
+2. **profile 能组合插件的行**：`dsh --profile e2e --from-default-profile headless`
+   建一个专用 profile，`dsh plugin --profile e2e add file:D:\DSH\shadow-plugin` 装上副本，
+   `--dump-config` 里能看到 `preset-shadow` 与 `shadow` 两行都在。
+3. **但 preset 这条路是死的**：无头 runner 源码（`dsh-headless/lib/index.js`）对沿用会话
+   直接 `throw`「runs under agent preset … which the one-shot runner does not compose」；
+   实测新建的无头会话，会话头里**没有** `agentPreset`——它不绑默认 preset，
+   所以给 registry 设 `default: shadow` 也白设。守卫注册在 preset 里，于是挂不上。
+4. **绕开 preset 的那一招是有效的**：把 `shadow-tools` 这一行直接插到 **profile 层**
+   （不是 preset 里），无头新建会话就会组合它，守卫随之挂载——实测启动时不再报
+   `1 entry did not activate`，provider 也能配通（凭据按名字引用，不落密钥）。
+
+**剩下的卡点与守卫无关**：这个 profile 里任何 pwsh 调用都会以
+`Cannot read properties of undefined (reading 'prepare')` 中断，然后进程退出，
+连 `echo shadow-local-ok` 都是。已做隔离实验证明不是插件引起的：把 profile 层的
+`shadow-tools` 行整行去掉，`echo` 照样崩。崩在无头模板自己的工具执行路径上
+（桌面 profile 由 Electron 独占，CLI 连 `--dump-config` 都被拒，没法直接对比组合树）。
+
+**复现配方**（模板修好后可再用，profile 在 `D:\DSH\.DSH\profiles\e2e`）：
+
+```powershell
+npx --yes @deepseek-ai/dsh@next --profile e2e --from-default-profile headless
+npx --yes @deepseek-ai/dsh@next plugin --profile e2e add "@deepseek-ai/dsh-tools@0.2.1-rc.4"
+npx --yes @deepseek-ai/dsh@next plugin --profile e2e add "file:D:\DSH\shadow-plugin"
+# 然后把 D:\DSH\.DSH\profiles\e2e\cordis.patch.yml 写成仓库里记的那份
+# （shadow-tools 插 profile 层 + stepfun provider/model 两段照抄桌面用户层）
+npx --yes @deepseek-ai/dsh@next --profile e2e --json "<探针任务>"
+```
+
+注意安装方式带来的一个反直觉事实：`file:` 装进来的**不是副本，是硬链接**——
+`fsutil hardlink list <e2e 副本>\package.json` 会列出仓库和 profile 两条路径指向同一个文件。
+所以改了仓库，profile 立刻就是新字节，**不需要**再同步；而 `npm run sync -- --to <e2e 副本>`
+会直接以 `ERR_FS_CP_EINVAL`（src and dest cannot be the same）失败，这本身就是「它不是副本」的
+证据。硬链接会被「临时文件 + 改名」式的写入打断，届时两条路径内容分叉——判断方法还是比哈希
+（和桌面副本同一招）。`link:` 方式在这里行不通：`@deepseek-ai/dsh-tools` 由运行时提供，
+链接目录的解析路径走不到它（`ERR_MODULE_NOT_FOUND`，实测）。
+
+**验收标准**（模板修好那天照这个判）：无头跑 `ping -n 1 shadow-e2e.invalid`，
+会话日志里出现 `approval/asked` 且 reason 以 `shadow:` 开头；或者没有审批通道时
+出现 `shadow: …, and no approval channel is available` 的拒绝——两者都算守卫挂上了，
+且全程不需要人点任何按钮。
+
+## 这一环为什么仍然要人（以及已经砍掉了多少）
+
+守卫注册在 `preset-shadow` 的 agent 作用域里，所以**默认情况下**只有 GUI 里能建影子会话：
+无头 runner 不组合 preset（源码与实测都一样），HTTP API 那条路的 web token 在日志里
+被打码、也不是给影子用的。这是产品决定而不是疏漏——你自己的会话是可信的，守卫只该管影子。
+但「默认不行」不等于「架构上不行」：本轮实测证明，把 `shadow-tools` 行插到 profile 层
+就能让无头会话也挂上守卫（见上一节），所以这一环最终是能自动化的，现在只差模板修 bug。
+
+但「要人」不等于「每一轮都要人三次」。构建戳与探针清单把人工点从三个压到一个：
+
+| 原来 | 现在 |
+|---|---|
+| 重启后跑探针、解会话日志、判读 reason，才知道新代码是否在位 | grep 一行 `shadow: build`，与 `npm run fingerprint` 比对 |
+| 每轮给操作员一句新话术 | 操作员每次只粘「读 PROBES.md 逐条执行」 |
+| 探针失败要先怀疑「是不是没重启」 | 指纹不等就是没重启，一条命令定位 |
+
+剩下的那一个点是重启本身——而重启本来就是操作员自己开应用时会做的事，不是为验证付出的额外代价。
+
+还没做的两件事（都记在 CHANGELOG 的待办里）：**离线激活测试**——把 `cordis.patch.yml`
+激活进假容器，把「接线对不对」也变成离线断言，实时实测就只剩「宿主升版」才需要一次；
+**headless 实测档案**——专用 profile 跑无头，让「点允许」也消失。后者本轮已经调研完：
+入口有、profile 能组合、守卫能挂（绕过 preset），只差无头模板自己的工具执行路径
+（见上一节）。所以它不再是「要不要做」的问题，而是「等模板修」的问题。

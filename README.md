@@ -218,7 +218,7 @@ profile 的 package.json → dsh.profile.bundles 里有 "@deepseek-ai/dsh-experi
 
 关键点：**查的是目的地，不是内容**。payload 用 base64、拆开、换编码都改了不目的地，所以这条规则绕不过去；而内容正则可以被绕过，所以没做内容扫描。
 
-**作用域**：守卫只作用于**影子会话**——它注册在 `preset-shadow` 这个 agent preset 的作用域里（见 `cordis.patch.yml`），你自己的会话不受影响。这不是疏漏：影子才是读不可信内容（网页、issue、别人的 README）的那一方，你的会话本来就可信。同样因为作用域，没有 CLI 或 API 能在影子会话外触发守卫，端到端验证必须在影子会话里做（见 `E2E-GUARD.md`）。
+**作用域**：守卫只作用于**影子会话**——它注册在 `preset-shadow` 这个 agent preset 的作用域里（见 `cordis.patch.yml`），你自己的会话不受影响。这不是疏漏：影子才是读不可信内容（网页、issue、别人的 README）的那一方，你的会话本来就可信。同样因为作用域，CLI 与 API **默认**碰不到守卫——无头 runner 不组合 preset，实测如此（见 `E2E-GUARD.md`）。但这不是架构上限：把 `shadow-tools` 那一行插到 profile 层，无头会话也会挂上守卫，本轮已实测到它激活；差的只是无头模板自己的工具执行路径修好。
 
 默认白名单为空 = 每次外网请求都问你。嫌烦就把常用域加进去，但记住**白名单本身就是一条通道**。
 
@@ -280,6 +280,7 @@ npm test                        # 全部离线检查（纯核 + 预检 + 仿真 
 npm run pack:check              # 只验发布产物：files 覆盖、入口存在、只复制这些也能跑
 node tests/run.mjs --deployed   # 额外对已安装副本再跑一遍（需 SHADOW_PROFILE_TOOLS）
 npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自动验证
+npm run fingerprint             # 打印本仓库运行代码的内容哈希，与宿主日志里的 build 行比对
 ```
 
 | 套件 | 覆盖 |
@@ -290,6 +291,7 @@ npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自
 | `tests/dispatch-core.test.mjs` | 纯判断核：身份派生、messageId、证据扫描、状态机、渲染格式，以及**出网守卫**的完整判定（白名单/子域/本机/凭据与端口/嵌套参数；shell 段首与散文豁免、可执行 span、命令头归一化、命令行自我定义、污点、fail closed——含端到端首次运行录到的 8 个真实调用；UNC 共享路径、DNS 名字查询、`npm run`/`make` 脚本体、第二个无 scheme 目的地、嵌套上限 fail closed、调遣污点传播） |
 | `tests/tools-sim.mjs` | 真实 `lib/tools.js` + 假宿主：投递/幂等/拒绝码/并发串行化/目录列举，以及守卫挂在 `tools/pre-execute` 上的行为（问人后放行、被拒即停、无审批通道拒绝、审批抛错拒绝、**守卫自身抛错也拒绝且不弹窗**、白名单不问、不触网不问；`npm run`/`make` 脚本体解析、`statefulShell` 跨调用记忆、调遣把污点带给目标会话） |
 | `tests/patch.check.mjs` | 解析 `cordis.patch.yml`（含 `!!js`），断言影子行完好；需要 `js-yaml`（`npm install` 后即可，也可用 `JS_YAML` 指定模块路径） |
+| `tests/build-stamp.test.mjs` | 构建戳的契约：哈希跟着字节走（改一个字节、加一个文件都会变），读不到时报 null 而不是炸掉挂载 |
 
 仿真器用 `tests/dsh-tools-stub.mjs` 复刻官方 author-schema 校验——工具定义若在真实注册处会抛错，测试里同样会抛。
 
@@ -307,12 +309,18 @@ npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自
 
   磁盘上的文件其实是自洽的，只是 HMR 的模块图陈旧；**重启必然恢复**。判断方法：日志里有 `did not activate`，且此后没有新的 `shadow:` 日志。
 
-  重启成功后，日志里应该正好有这两行，排查时值千金：
+   重启成功后，日志里应该正好有这三行，排查时值千金：
 
-  ```
-  shadow: directory D:\DSH\shadow        ← 生效目录（配置对不对看这一行）
-  shadow: permission identity auto        ← auto 可用 = 评审在位
-  ```
+   ```
+   shadow: directory D:\DSH\shadow        ← 生效目录（配置对不对看这一行）
+   shadow: build <12 位哈希>               ← 我加载的就是这些字节
+   shadow: permission identity auto        ← auto 可用 = 评审在位
+   ```
+
+   中间那行是**构建戳**：宿主自报它加载的 `lib/*.js` 的内容哈希。重启后拿它和仓库里
+   `npm run fingerprint` 的输出对一下，相等才说明新代码真的在位——比"看文件时间戳"更硬，
+   副本被改过、被别处副本顶替、或只拷了一半，哈希都会不一样。不想跑探针的话，
+   这一行就是"改动生效了吗"的完整答案。
 
   第二行若变成 `using "danger-full-access" instead` 的告警，说明 profile 里没挂 `@deepseek-ai/dsh-experimental-auto-review`——那样影子就是**全权不审**。
 

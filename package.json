@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-shadow",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": false,
   "type": "module",
   "description": "Shadow coordinator: supervise work across your projects and dispatch messages to other Sessions, with explicit selection and audit-ready delivery receipts",
@@ -50,6 +50,7 @@
     "README.en.md",
     "CHANGELOG.md",
     "E2E-GUARD.md",
+    "e2e",
     "DESIGN.md",
     "DISPATCH-SPEC.md",
     "DISPATCH-ABSORPTION.md",
@@ -59,6 +60,7 @@
     "test": "node tests/run.mjs",
     "test:deployed": "node tests/run.mjs --deployed",
     "pack:check": "node scripts/pack-check.mjs",
+    "fingerprint": "node scripts/fingerprint.mjs",
     "sync": "node scripts/sync.mjs"
   },
   "devDependencies": {

@@ -10,6 +10,7 @@
  */
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { buildStamp } from '../lib/build-stamp.js'
 
 const LIB = process.env.SHADOW_LIB
 let failures = 0
@@ -36,6 +37,22 @@ await load('shadow-dir.js', ['DEFAULT_SHADOW_DIR', 'directoryKey', 'expandShadow
 await load('dispatch-core.js', ['deriveMessageId', 'deliveryEvidence', 'renderTargets'])
 await load('index.js', ['name', 'apply'])
 await load('tools.js', ['name', 'inject', 'apply'])
+
+// The fingerprint the host will log for the installed copy must equal the one
+// the checkout produces. A half-synced copy that still imports cleanly would
+// otherwise pass every other check here while the host quietly runs the older
+// guard — the failure this comparison exists to catch.
+const checkout = buildStamp()
+const installed = await import(pathToFileURL(path.join(LIB, 'build-stamp.js')).href).then((m) => m.buildStamp())
+if (checkout === null || installed === null) {
+  failures += 1
+  console.error('FAIL build stamp: unreadable runtime files on one side')
+} else if (checkout.hash !== installed.hash || checkout.files !== installed.files) {
+  failures += 1
+  console.error(`FAIL build stamp: checkout ${checkout.hash} (${String(checkout.files)} files) != installed ${installed.hash} (${String(installed.files)} files)`)
+} else {
+  console.log(`ok   build stamp: installed copy is ${installed.hash} over ${String(installed.files)} files, same as the checkout`)
+}
 
 console.log(failures === 0 ? 'deployed imports: all entries load' : `deployed imports: ${failures} failed`)
 process.exitCode = failures === 0 ? 0 : 1
