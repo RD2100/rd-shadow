@@ -11,7 +11,7 @@
  *   node scripts/sync.mjs --to <profile>/node_modules/dsh-plugin-shadow
  *   node scripts/sync.mjs --profile <profile directory>
  */
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -67,6 +67,13 @@ for (const relative of files) {
     console.error(`sync: source is missing ${relative}`)
     process.exit(1)
   }
+  // 同一台机器上 checkout 与部署副本可能共享同一批 inode（`file:`/`link:` 装法是
+  // 硬链，不是拷贝）。这时 cpSync 报 ERR_FS_CP_EINVAL——不是错误，是「本来就是同一份」，
+  // 跳过即可。realpathSync 看穿路径别名，statSync 看穿硬链，两个都要比。
+  if (realpathSync(from) === realpathSync(to)) continue
+  const fromStat = statSync(from)
+  const toStat = existsSync(to) ? statSync(to) : undefined
+  if (toStat !== undefined && fromStat.dev === toStat.dev && fromStat.ino === toStat.ino) continue
   mkdirSync(path.dirname(to), { recursive: true })
   cpSync(from, to)
 }
