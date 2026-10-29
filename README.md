@@ -391,7 +391,6 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 - [x] CI：至少跑 `npm test`（`.github/workflows/test.yml`，ubuntu/windows × node 22/24）
 - [ ] 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
 - [x] 出网守卫端到端验证（见 [E2E-GUARD.md](E2E-GUARD.md)）：提示词、判读方法、首次运行结果表与复跑路径都已归档；最后一环（影子会话里验证修复生效）待补
-- [ ] 并入套件评估精华（来源：`dsh-plugin-suite-by-rd` 价值评估结论，2026-10-29）：只保留「宿主探针」（自动检查插件在当前 DSH 宿主上的版本/接口/依赖能否跑通）与「升级红灯」（上游有新版本时提醒重新冻结快照并做差分审查）；**不**保留整套 Hub 产品
 
 ### 发布到 npm 的步骤
 
