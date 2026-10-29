@@ -12,7 +12,7 @@ The shadow is a separate DSH Session living in its own directory. It has three a
 2. **Read** any Session's state and recent events;
 3. **Dispatch** — deliver a message to a chosen Session and return audit-ready delivery evidence.
 
-It does not reimplement the old workbench's ledger, memory, or subscription pools. It uses only the official Session, approval, and permission services, so **every action can be reconstructed from the Session log**.
+It does not reimplement the old workbench's ledger or subscription pools. Project-level memory stays out of this package; choosing it is [DSH engineering backlog](docs/DSH-改造待办.md) P2 (Chinese). Shadow-domain memory (dispatch, acceptance, and decision context) is a decided built-in and is not implemented yet — see [Shadow-line backlog](#shadow-line-backlog) and [DESIGN.md](DESIGN.md) §11. It uses only the official Session, approval, and permission services, so **every action can be reconstructed from the Session log**.
 
 ---
 
@@ -365,7 +365,56 @@ scripts/restart-host.mjs   the restart worker: relaunches outside the host's pro
 tests/               offline verification assets
 DESIGN.md            design (invariants, permission model, milestones)  — Chinese
 DISPATCH-SPEC.md     implementation spec (runtime contracts, state machine, idempotency, verification log) — Chinese
+docs/DSH-改造待办.md DSH / engineering backlog (P2–P6, separate from the shadow line) — Chinese
 ```
+
+---
+
+## Shadow-line backlog
+
+Notes from 2026-10-29. None of the three is implemented. They record priority and boundary only. The Chinese decision text, including how this overrides DESIGN §7's old "no memory" line, is [DESIGN.md](DESIGN.md) §11 and [README.md](README.md)「影子线待办」. P2–P6 are the next section. The publish checklist is further down. The three lists are separate.
+
+### P0 — verification-first loop (wire-up, not a verification engine inside the shadow)
+
+After a change is coded, tested, and reviewed, nothing yet **programmatically blocks** a `complete` that has no acceptance evidence. After the shadow dispatches work, that evidence cannot be matched either.
+
+Reuse DSH Hooks, goals, and plan-mode. The completion gate and the evidence come from the community **dsh-verification** plugin (or an equivalent). Advisory day to day; enforce on critical tasks.
+
+**Boundary**: the shadow keeps dispatching and reading results with `shadow_inspect`. It does not grow its own verification engine or ledger inside rd-shadow.
+
+### P1 — work-item status surface (outside the shadow)
+
+Nothing queryable across Sessions yet answers who is doing the work, where it is stuck, and whether acceptance passed.
+
+Compose **goals + verification + shadow inspect** first. If that is still not enough, add a thin standalone **work-status** plugin beside the shadow.
+
+**Boundary**: do not fold this back into rd-shadow. The status surface stays out of the shadow package.
+
+### Built-in shadow memory (product-decision update)
+
+Its own priority. Not part of P0 or P1.
+
+Memory is a first-class built-in of the shadow, and it covers only the shadow domain: dispatch, acceptance, and decision context. Project-level memory stays out of this package. Choosing a community dual-memory setup is [DSH engineering backlog](docs/DSH-改造待办.md) P2, and that plugin is not a shadow dependency.
+
+**Boundary**: built-in memory is not a second copy of project MEMORY / PROGRESS. Scope is the shadow domain only.
+
+This page no longer lists memory next to the ledger and subscription pools as something the package refuses outright. The word "memory" in DESIGN §7's old non-goal ("no ledger, memory, subscriptions, quota pools, or usage stats") is overridden by this note. The ledger, subscriptions, quota pools, and usage stats stay out.
+
+---
+
+## DSH engineering backlog
+
+Separate from the shadow-line notes above. P2–P6 are later DSH / engineering-setup notes, not shadow-kernel work. Priority, the gap, what to reuse, and how to fill it are in [docs/DSH-改造待办.md](docs/DSH-改造待办.md) (Chinese).
+
+| Priority | Item |
+|---|---|
+| P2 | Land dual memory (choose and configure it): a community dual-memory setup on the DSH / project side, not a shadow dependency |
+| P3 | Force test / format after edits: project-level Hooks; steer or deny on failure |
+| P4 | Thin main instructions plus an on-demand rules pack: a very thin main prompt and path-rules template (bootstrap) |
+| P5 | Standard-flow Skills text: understand → plan → code → test → review → update memory |
+| P6 | One-shot end-to-end check: shadow + verification + memory + hooks + skills + Renovate; no Hub |
+
+The status surface, a general ledger, and project dual-memory stay out of the shadow package. The publish checklist below is a third list.
 
 ---
 

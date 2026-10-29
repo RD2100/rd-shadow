@@ -55,6 +55,7 @@
     "DISPATCH-SPEC.md",
     "DISPATCH-ABSORPTION.md",
     "SELFTEST.md",
+    "docs/DSH-改造待办.md",
     "scripts"
   ],
   "scripts": {
