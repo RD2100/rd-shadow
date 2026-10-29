@@ -168,6 +168,26 @@ for (let i = 0; i < b.length - 4; i += 1) {
 子命令：`arm`（记账，默认 HEAD）、`judge`（只判定）、`verify`（只核对）、默认（全跑一轮）、
 `watch`（挂上之后每个新 arm 自己跑完）、`status`。`--dry-run` 只判定不重启，测试与 CI 走这支。
 
+### 为什么 worker 必须在宿主进程树之外
+
+裁判自己跑在宿主的进程树里。实测进程链：
+
+```
+pwsh(26312) ← DSH NEXT.exe(4236) ← DSH NEXT.exe(15572) ← DSH NEXT.exe(7316)
+```
+
+宿主是裁判的**祖先进程**，所以裁判一旦 `taskkill /F /T /IM "DSH NEXT.exe"`，自己也会被收掉——
+死在拉起应用之前，应用不会回来，核对也不会发生。0.7.0 正是这个形状，判定能过、重启是空的。
+
+于是重启与核对交给 `scripts/restart-host.mjs`，由 WMI（`Invoke-CimMethod Win32_Process Create`，
+WMI 优先，不用注册不用清理）或计划任务服务（`schtasks` 兜底）承载——两者都是 Windows 服务
+起进程，不在宿主的树里。裁判先把 worker 起到树外，**然后才** taskkill；它自己死掉没关系，
+worker 会收尾，并把 `relaunch`/`verify` 两行写进小本本。测试里这条性质是被钉住的：
+起 worker 的那一下走 WMI 或 schtasks，**绝不**是裁判的子进程。
+
+还没人做的一次实测：让 `npm run judge` 真跑一遍，看应用是否自己回来、账上是否多出
+`relaunch:ok` 与 `verify:ok` 两行。这是 0.7.1 唯一的验收项。
+
 ## 判读表
 
 | 现象 | 含义 |

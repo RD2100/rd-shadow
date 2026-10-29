@@ -2,6 +2,31 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.7.1] — 2026-10-29
+
+0.7.0 的裁判能判定、也能重启，但那一下重启是坏的：裁判跑在宿主的进程树里——实测
+`pwsh ← DSH NEXT.exe ← DSH NEXT.exe ← DSH NEXT.exe`，宿主就是它的祖先进程——所以它
+`taskkill` 一发，自己跟着死，死在拉起应用之前。这一轮把重启与核对搬到宿主进程树之外。
+
+### Added
+
+- **`scripts/restart-host.mjs`（worker）**：由 WMI（`Invoke-CimMethod Win32_Process Create`）
+  或计划任务服务承载，都不在宿主的进程树里。它做四件事：等应用退出（可能还没死透，也可能
+  本来没在跑）→ 拉起应用 → 等宿主日志出现 `shadow: build <期望戳>`（撞见 `did not activate`
+  即失败，超时即失败）→ 退出码 0/1。每个阶段写一行小本本，过程另记一份流水
+  （`<home>/.shadow-verify/restart-host.log`）
+- `scripts/verify-and-restart.mjs` 的 `restartApp()` 改成：先把 worker 起到进程树外，
+  **然后才** taskkill。裁判自己会死，worker 会收尾——这是设计，不是漏洞
+- `tests/restart-host.test.mjs`：13 项。钉住那条承重性质——起 worker 走 WMI，退回 schtasks，
+  **绝不**当裁判的子进程直接 spawn（否则它会和裁判一起被收掉）；再把每种失败形状
+  （应用不退、拉起抛错、宿主报错戳、宿主一直不出声）都变成账上的一行
+
+### Fixed
+
+- `scripts/pack-check.mjs` 现在连 dev 脚本的 import 一起验（它们进 `files` 了，
+  装完的副本要能跑同一个裁判），并允许脚本用 `node:child_process` 等内置模块——
+  `lib/` 里仍然一个都不许有
+
 ## [0.7.0] — 2026-10-29
 
 上一轮把「怎么知道改动生效了」压成了一行日志，但人还在做四件事：同步、重启、解日志、判读。这一轮把那四件也收走：`npm run judge` 一条命令跑完「该重启吗 → 重启 → 生效了吗」，全程写进小本本。判定逻辑没变的那一轮，人做的事是零。

@@ -27,6 +27,10 @@ const suites = [
   // "only for bytes a named commit contains", and the round runs end to end
   // against a fake host so no test ever touches a real process.
   { label: 'verify-restart', args: [path.join(TESTS, 'verify-restart.test.mjs')] },
+  // The worker that performs the restart lives outside the host's process tree,
+  // because the judge would otherwise be killed by its own taskkill. Both halves
+  // of that claim — the spawn path and the failure shapes — are pinned offline.
+  { label: 'restart-host', args: [path.join(TESTS, 'restart-host.test.mjs')] },
   { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
   // The fuzz generates the spellings the hand-written suites would have to
   // think of, and asserts both halves: a call that reaches the network is never

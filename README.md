@@ -298,6 +298,7 @@ npm run judge                   # 全自动一轮：判定 → 通过就重启�
 | `tests/patch.check.mjs` | 解析 `cordis.patch.yml`（含 `!!js`），断言影子行完好；需要 `js-yaml`（`npm install` 后即可，也可用 `JS_YAML` 指定模块路径） |
 | `tests/build-stamp.test.mjs` | 构建戳的契约：哈希跟着字节走（改一个字节、加一个文件都会变），读不到时报 null 而不是炸掉挂载 |
 | `tests/verify-restart.test.mjs` | 重启裁判的契约：只有「部署副本逐字节等于某个提交」才放行；用一个假宿主把全自动那一轮跑通，并钉住「判定不过就绝不动手」 |
+| `tests/restart-host.test.mjs` | worker 的契约：起它必须走 WMI/schtasks（在宿主进程树外，否则会被自己的 taskkill 收掉），以及每种失败形状都要落到账上 |
 
 仿真器用 `tests/dsh-tools-stub.mjs` 复刻官方 author-schema 校验——工具定义若在真实注册处会抛错，测试里同样会抛。
 
@@ -353,6 +354,9 @@ npm run judge                   # 全自动一轮：判定 → 通过就重启�
   「退出并重启」要人确认的就是这件事。要体面那一下，就自己点托盘，然后跑
   `npm run judge -- verify` 让裁判核对。详见 `E2E-GUARD.md`「重启裁判」一节。
 
+  重启本身由 `scripts/restart-host.mjs` 做，它被起到宿主的进程树之外（WMI 或计划任务
+  承载）——裁判跑在树里，`taskkill` 一发自己也会死，所以拉应用的不能是它。
+
 ### 目录结构
 
 ```
@@ -364,6 +368,7 @@ lib/build-stamp.js   构建戳：挂载时自报加载了哪些字节
 lib/client.js        浏览器半边：侧栏入口与面板
 cordis.patch.yml     preset + 三条插件行
 scripts/verify-and-restart.mjs  重启裁判：判定 → 重启 → 核对宿主自报行
+scripts/restart-host.mjs        重启 worker：在宿主进程树之外拉起应用并核对
 tests/               离线验证资产
 DESIGN.md            设计（不变量、权限模型、里程碑）
 DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验证记录）

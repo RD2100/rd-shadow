@@ -84,6 +84,30 @@ check('runtime imports stay inside the published set', () => {
   // Makefile so `npm run release` can be judged by what it runs. It is a
   // builtin, so the published set still stands alone.
   const allowedBare = new Set(['@deepseek-ai/dsh-tools', 'node:os', 'node:path', 'node:crypto', 'node:util', 'node:fs'])
+  // The dev scripts are published so an installation can run the same judge; their
+  // imports must therefore stay inside the builtins plus the package's own files.
+  // The full builtin list is allowed here, unlike the runtime one above, because a
+  // script that shells out is doing its job — nothing in lib/ may.
+  const allowedScripts = new Set([...allowedBare, 'node:child_process', 'node:process', 'node:url', 'node:assert'])
+  const scriptFiles = ['scripts/verify-and-restart.mjs', 'scripts/restart-host.mjs', 'scripts/fingerprint.mjs', 'scripts/sync.mjs']
+  const scriptProblems = []
+  for (const relative of scriptFiles) {
+    const source = readFileSync(path.join(ROOT, relative), 'utf8')
+    for (const match of source.matchAll(/^\s*import\s[^'"]*from\s+['"]([^'"]+)['"]/gm)) {
+      const specifier = match[1]
+      if (specifier.startsWith('node:')) {
+        if (!allowedScripts.has(specifier)) scriptProblems.push(`${relative} imports ${specifier}`)
+      } else if (!specifier.startsWith('.')) {
+        scriptProblems.push(`${relative} imports runtime-provided ${specifier}`)
+      } else {
+        const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(relative), specifier))
+        if (!published.has(resolved) && !scriptFiles.includes(resolved)) {
+          scriptProblems.push(`${relative} imports ${specifier} (not published)`)
+        }
+      }
+    }
+  }
+  if (scriptProblems.length > 0) throw new Error(scriptProblems.join('; '))
   const problems = []
   for (const relative of libFiles()) {
     const source = readFileSync(path.join(ROOT, relative), 'utf8')

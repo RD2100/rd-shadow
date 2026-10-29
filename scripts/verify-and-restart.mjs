@@ -42,6 +42,8 @@ import { pathToFileURL } from 'node:url'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 const PACKAGE = 'dsh-plugin-shadow'
+/** 兜底那条路（schtasks）用的任务名，worker 结束时会删掉它。 */
+const TASK_NAME = 'dsh-shadow-restart-host'
 /** 等宿主自报构建戳的最长时间。冷启动加挂载，实测几秒；给到三分钟是给慢机器留余量。 */
 const READY_TIMEOUT_MS = 180_000
 const POLL_MS = 2_000
@@ -401,8 +403,9 @@ async function runAll(options, home, ledger, armed, restart = restartApp) {
   if (options.dryRun) return { ok: true, detail: `${judged.detail} (dry run: nothing was restarted)`, stage: 'judge' }
 
   const before = logOffset(home)
+  const expected = await expectedHash(armed.commit, options.repoRoot)
   try {
-    restart(home)
+    restart({ home, ledger, commit: armed.commit, expect: expected ?? '' })
   } catch (error) {
     const detail = `the restart itself failed — ${messageOf(error)}`
     appendLedger(ledger, { kind: 'outcome', commit: armed.commit, ok: false, stage: 'restart', detail })
@@ -476,12 +479,62 @@ function launchApp() {
 /**
  * 那一下重启。见文件头：产品自带的路径都要人确认「现在没有要紧任务在跑」，
  * 开发环里这个确认由判定代做；代价是它不等应用体面退出。
+ *
+ * 顺序要紧：先把 worker 起到宿主进程树之外，再 taskkill。裁判自己就在那棵树里，
+ * taskkill 一发它也会死——所以拉应用的必须是 worker，不是这里。
  * 测试注入一个假的进来，于是「判定不过就绝不动手」这条也能被钉住。
+ * @param {{home: string, ledger: string, commit: string, expect: string}} round - 这一轮的参数。
+ * @param {(command: string) => void} [starter] - 起 worker 的方式，测试注入假的。
  * @returns {void}
  */
-function restartApp() {
-  if (isAppRunning()) killApp()
-  launchApp()
+function restartApp(round, starter = spawnWorkerOutsideTree) {
+  starter(workerCommand(round))
+  killApp()
+}
+
+/**
+ * worker 的命令行。期望的构建戳由调用方算好传进来——裁判和 worker 都不自己算，
+ * 算的人只有一个：仓库自己的 build-stamp.js。
+ * @param {{home: string, ledger: string, commit: string, expect: string}} round - 这一轮的参数。
+ * @returns {string} 一条可直接交给 WMI 的命令行。
+ */
+function workerCommand(round) {
+  const worker = path.join(REPO_ROOT, 'scripts', 'restart-host.mjs')
+  return [
+    `"${process.execPath}"`, `"${worker}"`,
+    '--expect', round.expect,
+    '--ledger', `"${round.ledger}"`,
+    '--home', `"${round.home}"`,
+    '--commit', round.commit,
+  ].join(' ')
+}
+
+/**
+ * 把 worker 起到宿主进程树之外。两条路都由 Windows 服务承载（WMI 提供程序主机 /
+ * 计划任务服务），都不在调用方的进程树里，所以裁判随后被 taskkill 收掉时它们活着。
+ *
+ * WMI 优先：不用注册、不用清理。schtasks 兜底：要建一个一次性任务，worker 结束时会删。
+ * @param {string} command - worker 的命令行。
+ * @param {(file: string, args: string[], options?: object) => unknown} [spawn] - 执行器，测试注入假的。
+ * @returns {'wmi' | 'schtasks' | 'none'} 走通了哪条路。
+ */
+function spawnWorkerOutsideTree(command, spawn = execFileSync) {
+  // 单引号里出现单引号要翻倍，否则 PowerShell 会把命令行截断。
+  const ps = `$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='${command.replaceAll("'", "''")}'}; Write-Output $r.ReturnValue`
+  try {
+    const out = String(spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', ps],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })).trim()
+    if (out === '0') return 'wmi'
+  } catch {
+    // WMI 不可用（服务关着、被策略禁掉）：落到 schtasks。
+  }
+  try {
+    spawn('schtasks', ['/create', '/tn', TASK_NAME, '/tr', command, '/sc', 'once', '/st', '00:00', '/f'], { stdio: 'ignore' })
+    spawn('schtasks', ['/run', '/tn', TASK_NAME], { stdio: 'ignore' })
+    return 'schtasks'
+  } catch {
+    return 'none'
+  }
 }
 
 /**
@@ -559,5 +612,5 @@ if (invokedDirectly) await main()
 export {
   appendLedger, deployedDir, deployedHash, dshHome, expectedHash, gitList, gitShow, hostLog, judge,
   ledgerPath, logOffset, messageOf, parseArgs, pendingArm, readLedger, restartApp, runAll, runJudge,
-  runVerify, waitForHost,
+  runVerify, spawnWorkerOutsideTree, waitForHost, workerCommand,
 }
