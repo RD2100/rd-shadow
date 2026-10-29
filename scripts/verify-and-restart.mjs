@@ -289,39 +289,52 @@ function hostLog(home) {
 }
 
 /**
- * @param {string} home - DSH 主目录。
- * @returns {number} 日志当前长度，作为「从这里往后才算」的偏移量。
+ * 一行日志的时间戳。多行堆栈的续行没有时间戳，返回空串——它们排在时间线之外，
+ * 反正要判据的两行（构建戳、did not activate）都带时间戳。
+ * @param {string} line - 一行日志。
+ * @returns {string} ISO 时间戳，或空串。
  */
-function logOffset(home) {
-  const file = hostLog(home)
-  return existsSync(file) ? statSync(file).size : 0
+function lineTime(line) {
+  const found = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/.exec(line)
+  return found === null ? '' : found[1]
+}
+
+/**
+ * 只留某个时刻之后的行。
+ *
+ * 为什么不能按字节偏移量切：宿主日志是**带容量上限的滚动文件**。重启时它被重写过一遍，
+ * 新旧内容的总字节数几乎一样大——0.7.2 实测过：偏移量取在 131136，滚动后文件还是
+ * 131136，`偏移量 <= 文件大小` 成立，于是从那之后读，读到的是空；而宿主 3 秒前就已经
+ * 自报过构建戳了。整轮判成假失败。时间戳不受滚动、截断、按天切分影响。
+ * @param {string} text - 整个日志文件。
+ * @param {string} since - ISO 时间戳；空串表示不切。
+ * @returns {string} 切之后的行。
+ */
+function afterCutoff(text, since) {
+  if (since === '') return text
+  return text.split('\n').filter((line) => lineTime(line) >= since).join('\n')
 }
 
 /**
  * 等宿主自报。判据全在它自己的日志里，不猜：`shadow: build <hash>` 是宿主说
  * 「我加载的是哪些文件」，`did not activate` 是它说「有一行没挂上」。
- * 两者都必须在重启前记下的偏移量之后出现，否则读到的是上一轮的行。
+ * 两者都必须发生在截止时刻之后，否则读到的是上一轮的行。
  * @param {string} home - DSH 主目录。
  * @param {string} expected - 期望的构建戳。
- * @param {number} from - 日志偏移量。
+ * @param {string} [since] - 截止时刻（ISO）；空串表示整份日志都算。
  * @returns {Promise<{ok: boolean, detail: string}>} 核对结果。
  */
-async function waitForHost(home, expected, from) {
+async function waitForHost(home, expected, since = '') {
   const deadline = Date.now() + READY_TIMEOUT_MS
   let last = 'waiting for the host to report'
   while (Date.now() < deadline) {
     const file = hostLog(home)
-    let text = ''
-    if (existsSync(file)) {
-      const size = statSync(file).size
-      // 日志按天切分时文件会被换掉，此时偏移量比文件还大，从头读。
-      text = readFileSync(file).subarray(from <= size ? from : 0).toString('utf8')
-    }
-    const built = text.includes(`shadow: build ${expected} `)
-    if (text.includes('did not activate')) return { ok: false, detail: 'the host logged "did not activate" after the restart' }
-    if (built) return { ok: true, detail: `the host reported build ${expected}` }
-    last = text.length === 0 ? 'no new log lines yet' : 'new log lines, but no build stamp yet'
-    await new Promise((resolve) => { setTimeout(resolve, POLL_MS) })
+    const text = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    const fresh = afterCutoff(text, since)
+    if (fresh.includes('did not activate')) return { ok: false, detail: 'the host logged "did not activate" after the restart' }
+    if (fresh.includes(`shadow: build ${expected} `)) return { ok: true, detail: `the host reported build ${expected}` }
+    last = fresh.length === 0 ? 'no new log lines yet' : 'new log lines, but no build stamp yet'
+    await sleep(POLL_MS)
   }
   return { ok: false, detail: `${last}; gave up after ${READY_TIMEOUT_MS / 1000}s` }
 }
@@ -354,7 +367,7 @@ async function runJudge(options, home, ledger, armed) {
  * @param {object} options - 运行参数。
  * @param {string} home - DSH 主目录。
  * @param {string} ledger - 小本本路径。
- * @param {{commit: string, logOffset?: number}} armed - 当前记着的那一条。
+ * @param {{commit: string, since?: string}} armed - 当前记着的那一条。
  * @returns {Promise<{ok: boolean, detail: string, stage: string}>} 结局。
  */
 async function runVerify(options, home, ledger, armed) {
@@ -364,8 +377,7 @@ async function runVerify(options, home, ledger, armed) {
     if (!options.dryRun) appendLedger(ledger, { kind: 'outcome', commit: armed.commit, ok: false, stage: 'verify', detail })
     return { ok: false, detail, stage: 'verify' }
   }
-  const from = typeof armed.logOffset === 'number' ? armed.logOffset : 0
-  const result = await waitForHost(home, expected, from)
+  const result = await waitForHost(home, expected, typeof armed.since === 'string' ? armed.since : '')
   if (!options.dryRun) appendLedger(ledger, { kind: 'outcome', commit: armed.commit, ok: result.ok, stage: 'verify', detail: result.detail })
   return { ...result, stage: 'verify' }
 }
@@ -574,7 +586,7 @@ async function main() {
   if (options.action === 'arm') {
     const root = options.repoRoot ?? REPO_ROOT
     const commit = options.commit ?? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
-    appendLedger(ledger, { kind: 'arm', commit, logOffset: logOffset(home) })
+    appendLedger(ledger, { kind: 'arm', commit, since: new Date().toISOString() })
     console.log(`armed ${commit.slice(0, 7)}; the judge will only clear a restart once the deployed copy matches it byte for byte`)
     return
   }
@@ -625,6 +637,6 @@ if (invokedDirectly) await main()
 
 export {
   appendLedger, deployedDir, deployedHash, dshHome, expectedHash, gitList, gitShow, hostLog, judge,
-  ledgerPath, logOffset, messageOf, parseArgs, pendingArm, readLedger, restartApp, runAll, runJudge,
+  ledgerPath, messageOf, parseArgs, pendingArm, readLedger, restartApp, runAll, runJudge,
   runVerify, spawnWorkerOutsideTree, waitForHost, workerCommand,
 }

@@ -5,27 +5,31 @@
  *
  * The first is the load-bearing one. The judge runs inside the host's process
  * tree — the host is one of its ancestors — so the moment it taskkills the app it
- * dies too, before it could relaunch anything. That is why the relaunch and the
- * verification belong to a worker started by WMI or the scheduler, both of which
- * are hosted by a Windows service rather than by the judge. A plain child_process
- * spawn would sit in the doomed tree, so the spawn path is asserted here rather
- * than trusted.
+ * dies too, before it could relaunch anything. That is why killing, relaunching
+ * and verifying all belong to a worker started by WMI or the scheduler, both of
+ * which are hosted by a Windows service rather than by the judge. A plain
+ * child_process spawn would sit in the doomed tree, so the spawn path is asserted
+ * here rather than trusted.
  *
- * The second keeps the round auditable: an app that will not exit, a relaunch
- * that throws, a host that reports the wrong build, a host that never reports at
- * all — each has to produce a line, not a silence.
+ * The second keeps the round auditable: an app that will not exit, a kill that
+ * throws, a relaunch that throws, a host that reports the wrong build, a host that
+ * never reports at all — each has to produce a line, not a silence.
+ *
+ * The third is the one that keeps a running conversation intact: the kill waits
+ * for the host log to fall quiet, because the plugin and the live conversation
+ * share the host process.
  *
  * Usage: node tests/restart-host.test.mjs
  */
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
-const { runWorker, waitForExit } = await import(pathToFileURL(path.join(ROOT, 'scripts', 'restart-host.mjs')).href)
-const { logOffset, readLedger, spawnWorkerOutsideTree, waitForHost, workerCommand } = await import(
+const { runWorker, waitForExit, waitForQuiet } = await import(pathToFileURL(path.join(ROOT, 'scripts', 'restart-host.mjs')).href)
+const { readLedger, spawnWorkerOutsideTree, waitForHost, workerCommand } = await import(
   pathToFileURL(path.join(ROOT, 'scripts', 'verify-and-restart.mjs')).href)
 
 const EXPECT = '2d34d559ff9f'
@@ -74,11 +78,15 @@ function makeHome() {
  * The host reporting its build, which is what a successful boot looks like.
  * @param {string} log - the host log path.
  * @param {string} [stamp] - the build stamp to report.
+ * @param {string} [at] - when it reported, as an ISO stamp.
  * @returns {void}
  */
-function hostReports(log, stamp = EXPECT) {
-  appendFileSync(log, `2026-01-01T00:00:01.000Z [info] shadow: build ${stamp} over 6 files\n`)
+function hostReports(log, stamp = EXPECT, at = '2026-01-01T00:00:01.000Z') {
+  appendFileSync(log, `${at} [info] shadow: build ${stamp} over 6 files\n`)
 }
+
+/** A quiet probe that answers immediately: "the log has been quiet". */
+const quietNow = async () => 'the host log had been quiet for 0s'
 
 // 1. The happy path: the app is running, the worker kills it, waits, relaunches,
 // and the host reports the expected stamp. Everything is on the ledger.
@@ -87,7 +95,8 @@ function hostReports(log, stamp = EXPECT) {
   const launches = []
   const kills = []
   let running = true
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => { kills.push(1); running = false },
     isRunning: () => running,
     launch: (app) => { launches.push(app) },
@@ -104,7 +113,8 @@ function hostReports(log, stamp = EXPECT) {
   const { home, ledger, log } = makeHome()
   let polls = 0
   const launches = []
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => {},
     isRunning: () => { polls += 1; return polls < 3 },
     launch: (app) => { launches.push(app) },
@@ -117,7 +127,8 @@ function hostReports(log, stamp = EXPECT) {
 {
   const { home, ledger } = makeHome()
   const launches = []
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => {},
     isRunning: () => true,
     launch: (app) => { launches.push(app) },
@@ -131,7 +142,8 @@ function hostReports(log, stamp = EXPECT) {
 // 4. A kill that throws is recorded rather than swallowed.
 {
   const { home, ledger } = makeHome()
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => { throw new Error('access denied') },
     isRunning: () => true,
     launch: () => {},
@@ -145,7 +157,8 @@ function hostReports(log, stamp = EXPECT) {
 {
   const { home, ledger, log } = makeHome()
   const kills = []
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => { kills.push(1) },
     isRunning: () => false,
     launch: () => {},
@@ -157,7 +170,8 @@ function hostReports(log, stamp = EXPECT) {
 // 6. A relaunch that throws is recorded rather than swallowed.
 {
   const { home, ledger } = makeHome()
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => {},
     isRunning: () => false,
     launch: () => { throw new Error('the executable is gone') },
@@ -169,7 +183,8 @@ function hostReports(log, stamp = EXPECT) {
 // 7. A host that reports the wrong build is a failed round, not a silent one.
 {
   const { home, ledger } = makeHome()
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => {},
     isRunning: () => false,
     launch: () => {},
@@ -214,20 +229,77 @@ function hostReports(log, stamp = EXPECT) {
 
 // 10. The verification starts from the log's current length, not from zero:
 // a rotated log would otherwise offer the previous boot's build line and the
-// round would pass without the new host ever having come up.
+// 10. The verification starts from the moment the kill was issued, not from the
+// beginning of the file. The host log is a size-capped rotating file: 0.7.2
+// measured an offset of 131136 against a file that was still 131136 bytes after
+// the rotation, so the byte offset read back empty while the host had already
+// reported its build three seconds earlier — a false failure for the whole round.
 {
   const { home, ledger, log } = makeHome()
   appendFileSync(log, '2026-01-01T00:00:00.000Z [info] shadow: build 2d34d559ff9f over 6 files\n')
-  const before = statSync(log).size
-  let seen = -1
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+  let seen = ''
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
     kill: () => {},
     isRunning: () => false,
     launch: () => {},
-    wait: async (h, expected, from) => { seen = from; return waitForHost(h, expected, from) },
-    offset: (h) => logOffset(h),
+    wait: async (h, expected, since) => { seen = since; return waitForHost(h, expected, since) },
   })
-  check('a stale build line before the offset does not count', !result.ok && seen === before, `offset ${String(seen)} vs ${String(before)}`)
+  check('a build line from before the kill does not count', !result.ok && /^\d{4}-\d{2}-\d{2}T/.test(seen), `cutoff ${String(seen)}`)
+}
+
+// 10b. And the converse: a build line stamped after the kill does count, even
+// when the file it lives in has been rotated underneath us.
+{
+  const { home, ledger, log } = makeHome()
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0 }, {
+    quiet: quietNow,
+    kill: () => {},
+    isRunning: () => false,
+    launch: () => {},
+    wait: async (h, expected, since) => {
+      hostReports(log, EXPECT, new Date(Date.now() + 1_000).toISOString())
+      return waitForHost(h, expected, since)
+    },
+  })
+  check('a build line after the kill counts, rotated log or not', result.ok, result.detail)
+}
+
+// 10c. Waiting for the quiet window is what keeps a live conversation intact:
+// the plugin and the running session share the host process, so the kill has to
+// land between turns.
+{
+  const { home, ledger } = makeHome()
+  const log = path.join(home, 'logs', 'desktop-next.log')
+  const seen = []
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, quietMs: 0, maxWaitMs: 5_000 }, {
+    quiet: async (h, quietMs, maxWaitMs) => { seen.push([quietMs, maxWaitMs]); return 'the host log had been quiet for 0s' },
+    kill: () => {},
+    isRunning: () => false,
+    launch: () => {},
+    wait: async () => ({ ok: true, detail: 'the host reported the expected build' }),
+  })
+  check('the kill waits for a quiet window first', result.ok && seen.length === 1 && seen[0][0] === 0 && seen[0][1] === 5_000, JSON.stringify(seen))
+}
+
+// 10d. The real quiet wait, against a log that keeps growing: it gives up at the
+// cap and says so rather than waiting forever.
+{
+  const { home, log } = makeHome()
+  writeFileSync(log, '2026-01-01T00:00:00.000Z [info] host: booting\n')
+  // 有人一直在说话：每 200ms 追加一行，于是「安静 300ms」永远等不到。
+  const talker = setInterval(() => { appendFileSync(log, `${new Date().toISOString()} [info] host: still talking\n`) }, 200)
+  const detail = await waitForQuiet(home, 300, 1_200)
+  clearInterval(talker)
+  check('a log that never falls quiet is given up on, with the reason', /killing anyway/.test(detail), detail)
+}
+
+// 10e. And when it does fall quiet, it says so — that is the normal path.
+{
+  const { home, log } = makeHome()
+  writeFileSync(log, '2026-01-01T00:00:00.000Z [info] host: booting\n')
+  const detail = await waitForQuiet(home, 300, 60_000)
+  check('a quiet log is reported as quiet', /had been quiet for 0\.3s/.test(detail), detail)
 }
 
 // 11. The worker's own argument parsing refuses an incomplete invocation rather

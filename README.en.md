@@ -348,6 +348,8 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
 
   Killing, relaunching and verifying are all done by `scripts/restart-host.mjs`, hosted by WMI or the scheduler and therefore **outside the host's process tree** — the judge runs inside that tree, so its own `taskkill` would take it down with the host (measured in 0.7.1: the round ended with "the app did not exit"). The judge returns as soon as the worker is started.
 
+  The worker also **waits for the host log to fall quiet before it kills** (120s by default, 15 minutes at most): the plugin and the live conversation share the host process, so killing the host cuts the current turn in half, and a quiet log is the host's way of saying "this turn is over" (it writes nothing at all when idle). So run `npm run judge` as the last step of a turn and the restart will not interrupt it. See "Restart judge" in [E2E-GUARD.md](E2E-GUARD.md).
+
 ### Layout
 
 ```

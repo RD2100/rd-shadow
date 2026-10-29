@@ -185,12 +185,40 @@ WMI 起来了，但裁判的 taskkill 连它自己一起收掉，60 秒后 worke
 （`Invoke-CimMethod Win32_Process Create`，优先，不用注册不用清理）或计划任务服务
 （`schtasks` 兜底）承载——两者都是 Windows 服务起进程，不在宿主的树里，taskkill 才跑得完。
 裁判只做判定和交接：起完 worker 就返回，并在小本本里写一行 `restart`；它自己活不过那一下
-taskkill，这是设计。worker 动手前等三秒，让裁判的输出和小本本先落地。
+taskkill，这是设计。
 
-测试里这条性质是被钉住的：起 worker 的那一下走 WMI 或 schtasks，**绝不**是裁判的子进程。
+### 为什么 worker 动手前要等日志安静
 
-还没做的一次实测（0.7.2 的验收项）：让 `npm run judge` 真跑一遍，看应用是否自己回来、
-账上是否依次出现 `judge:ok`、`restart:ok`、`relaunch:ok`、`verify:ok` 四行。
+插件和正在跑的对话住在**同一个宿主进程**里：裁判是它的后代，当前这一轮对话也是。
+所以杀宿主就是打断当前这一轮对话——0.7.2 实测过，判定通过、重启成功，但对话被拦腰斩断。
+
+宿主空闲时一条日志都不写（实测 08:42–09:33 之间零行），所以「日志安静」是可靠的空档信号：
+worker 默认等 120 秒的安静，上限 15 分钟（`--quiet-ms` / `--max-wait-ms` 可调）。
+等不到就按上限动手，并在流水里写明是没等到。这样约定俗成的一条：**把 `npm run judge`
+放在一轮对话的最后一步**，杀就会落在这一轮说完之后。
+
+### 为什么核对按时间戳切，不按字节偏移量
+
+宿主日志是**带容量上限的滚动文件**。0.7.2 实测：偏移量取在 131136 字节，重启后滚动过的文件
+还是 131136 字节，`偏移量 <= 文件大小` 成立，于是从那之后读，读到的是空——而宿主三秒前
+就已经自报过构建戳。整轮被判成假失败。时间戳不受滚动、截断、按天切分影响，所以判据改成
+「截止时刻之后的行」。
+
+测试里这两条性质都是钉住的：等空档在杀之前、杀之前的构建戳行不算、杀之后的算。
+
+### 一次实测的记录（0.7.2 → 0.7.3）
+
+2026-10-29 09:33 UTC 那一轮，账上依次是：
+
+```
+judge:ok    every byte matches d6e14e3; deployed stamp 2d34d559ff9f
+restart:ok  the worker was started outside the host process tree
+relaunch:ok the app was relaunched
+verify:FAIL new log lines, but no build stamp yet; gave up after 180s   ← 滚动日志把偏移量打穿了
+```
+
+而宿主日志里 09:33:13 就有 `shadow: build 2d34d559ff9f`。同一天 09:36 手动再跑一轮，
+四行全 ok。0.7.3 修的就是上面这两条。
 
 ## 判读表
 
