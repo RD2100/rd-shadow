@@ -300,6 +300,31 @@ verify:FAIL new log lines, but no build stamp yet; gave up after 180s   ← 滚�
 `DSH_SESSION_ID`（从终端手跑裁判）或 dry run，就什么都不写：没有会话可接，
 写出来的东西也没人认领。
 
+### 一次实测的记录（0.9.0）
+
+2026-10-29 18:00 UTC 那一轮，账上依次是：
+
+```
+arm     1912191
+judge:ok    every byte matches 1912191; deployed stamp efe163bfce51
+restart:ok  the worker was started outside the host process tree; resume queued for session-da2681d4…
+relaunch:ok the app was relaunched
+verify:ok   the host reported build efe163bfce51
+```
+
+宿主日志里紧接着的三行，就是这条闭环本身：
+
+```
+18:02:20  shadow: build efe163bfce51 over 8 files     ← 挂载，relaunch 之后 4 秒
+18:02:50  shadow: resume queue holds 1 message(s)     ← 挂载之后 30 秒，按设计等 provider
+18:02:51  shadow: resume queue delivered to session-da2681d4…
+```
+
+队列文件投递后清零（0 条）。**这一回合的对话就是 18:02:51 那一行踢起来的——人没有发
+任何消息。** 重启是 visible 的（GUI 端口从 51032 变成 52481），会话历史原样续上，
+上下文不缺。至此自我迭代的闭环是：改代码 → `npm test` → `npm run sync` →
+`git commit` → `npm run judge`，人的动作到跑完裁判为止。
+
 ## 判读表
 
 | 现象 | 含义 |
