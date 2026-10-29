@@ -335,6 +335,67 @@ check('a missing deployed copy fails', !judge(staged.commit, path.join(staged.re
   check('a deployed copy without the core fails by name', !missing.ok && /dispatch-core\.js/.test(missing.detail), missing.detail)
 }
 
+// 17. 重启交出去之后，裁判把这一轮没说完的话写进续接队列——这是「改宿主半边
+// 不再需要人戳一下」的那一半。没有 DSH_SESSION_ID（从终端手跑裁判）就无从谈起：
+// 不写队列，也不在结论里提。dry run 同样什么都不写。
+{
+  const target = deploy(staged)
+  const home = scratch('home5')
+  mkdirSync(path.join(home, 'logs'), { recursive: true })
+  writeFileSync(path.join(home, 'logs', 'desktop-next.log'), '')
+  const ledger = path.join(scratch('ledger8'), 'ledger.jsonl')
+  const stamp = await expectedHash(staged.commit, staged.repo)
+  const queueFile = path.join(home, '.shadow-verify', 'resume-queue.jsonl')
+
+  const previous = process.env.DSH_SESSION_ID
+  process.env.DSH_SESSION_ID = 'session-judge-test-0001'
+  try {
+    const queued = await runAll({ dryRun: false, deployed: target, dshHome: home, repoRoot: staged.repo },
+      home, ledger, { commit: staged.commit }, () => {})
+    const entries = existsSync(queueFile) ? readFileSync(queueFile, 'utf8').trim().split('\n').map((line) => JSON.parse(line)) : []
+    check('a session in the environment gets one queued message',
+      queued.ok && entries.length === 1 && entries[0].sessionId === 'session-judge-test-0001'
+      && typeof entries[0].text === 'string' && entries[0].text.includes('自动续接')
+      && entries[0].text.includes(ledger) && entries[0].text.includes(String(stamp)),
+      queued.detail)
+    check('the queued message carries a deterministic id',
+      typeof entries[0]?.messageId === 'string' && entries[0].messageId.startsWith('resume-'), String(entries[0]?.messageId))
+    check('the handover says the conversation continues by itself', /resume queued for session-judge-test-0001/.test(queued.detail), queued.detail)
+
+    delete process.env.DSH_SESSION_ID
+    const home2 = scratch('home6')
+    mkdirSync(path.join(home2, 'logs'), { recursive: true })
+    writeFileSync(path.join(home2, 'logs', 'desktop-next.log'), '')
+    const ledger2 = path.join(scratch('ledger9'), 'ledger.jsonl')
+    const silent = await runAll({ dryRun: false, deployed: target, dshHome: home2, repoRoot: staged.repo },
+      home2, ledger2, { commit: staged.commit }, () => {})
+    check('without a session there is nothing to resume',
+      silent.ok && !existsSync(path.join(home2, '.shadow-verify', 'resume-queue.jsonl')) && !/resume queued/.test(silent.detail), silent.detail)
+  } finally {
+    if (previous === undefined) delete process.env.DSH_SESSION_ID
+    else process.env.DSH_SESSION_ID = previous
+  }
+}
+
+// 18. dry run 连队列都不碰：排练不能留下任何会被下一次启动当成真事的痕迹。
+{
+  const target = deploy(staged)
+  const home = scratch('home7')
+  mkdirSync(path.join(home, 'logs'), { recursive: true })
+  writeFileSync(path.join(home, 'logs', 'desktop-next.log'), '')
+  const ledger = path.join(scratch('ledger10'), 'ledger.jsonl')
+  const previous = process.env.DSH_SESSION_ID
+  process.env.DSH_SESSION_ID = 'session-judge-test-0002'
+  try {
+    const result = await runAll({ dryRun: true, deployed: target, dshHome: home, repoRoot: staged.repo },
+      home, ledger, { commit: staged.commit }, () => {})
+    check('a dry run writes no queue', result.ok && !existsSync(path.join(home, '.shadow-verify', 'resume-queue.jsonl')), result.detail)
+  } finally {
+    if (previous === undefined) delete process.env.DSH_SESSION_ID
+    else process.env.DSH_SESSION_ID = previous
+  }
+}
+
 // Remove the scratch roots and nothing else: each one is a direct child of the
 // temp dir, and a test that cleaned up by guessing would be one typo away from
 // deleting something it does not own.

@@ -61,6 +61,14 @@ function makeCtx(options = {}) {
           set: (session, target) => applied.push(`${session.id}:${target}`),
         },
         sessions: { list: () => sessions },
+        // The resume queue's inject asks for this one. A stub whose only answer
+        // is "no such session" keeps the drainer's schedule inert in tests; the
+        // 10s first attempt never fires because the checks below are synchronous
+        // and the timer is unref'd. A runtime that lacks the service must make
+        // the inject throw, so the stub is offered only when the runtime has it.
+        ...(required.includes('sessionController') && services.includes('sessionController')
+          ? { sessionController: { resolveAgent: async () => ({ error: { code: 'session/not-found', message: 'the fake host stores no sessions' } }) } }
+          : {}),
       }
       for (const name of required) if (scope[name] === undefined) throw new Error(`missing ${name}`)
       callback(scope)
@@ -192,6 +200,27 @@ check('an unreadable log counts as recorded, so the user keeps their choice', ()
   const { ctx, applied } = makeCtx({ unreadableLog: true })
   apply(ctx, { shadowDir: 'D:\\work\\shadow', enforcePermissionPreset: false })
   assert.deepEqual(applied, [])
+})
+
+// The resume queue needs the session entry. A runtime without it cannot deliver
+// anything — that must cost one warning, never the mount: the permission
+// identity and the tools still work, and only the automatic continuation dies.
+check('a runtime without the session entry still mounts, and says what died', () => {
+  const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions'] })
+  assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
+  const line = lines.find((entry) => entry.includes('resume queue cannot run'))
+  assert.ok(line !== undefined, lines.join('\n'))
+  assert.match(line, /sessionController/)
+  assert.ok(lines.some((entry) => entry.includes('permission identity auto')), lines.join('\n'))
+})
+
+// With the service present the drainer is scheduled, not skipped: the host half
+// must not log a complaint it does not have. (The preflight's own "lacks ..."
+// warning is expected here — the fake still omits the tools' services.)
+check('a runtime with the session entry schedules the queue without complaint', () => {
+  const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions', 'sessionController'] })
+  assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
+  assert.ok(!lines.some((line) => line.includes('resume queue cannot run')), lines.join('\n'))
 })
 
 console.log(`host preflight check: ${passed} checks passed`)

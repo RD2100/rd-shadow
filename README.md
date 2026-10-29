@@ -298,6 +298,7 @@ npm run judge                   # 全自动一轮：判定 → 通过就重启�
 | `tests/patch.check.mjs` | 解析 `cordis.patch.yml`（含 `!!js`），断言影子行完好；需要 `js-yaml`（`npm install` 后即可，也可用 `JS_YAML` 指定模块路径） |
 | `tests/build-stamp.test.mjs` | 构建戳的契约：哈希跟着字节走（改一个字节、加一个文件都会变），读不到时报 null 而不是炸掉挂载 |
 | `tests/verify-restart.test.mjs` | 重启裁判的契约：只有「部署副本逐字节等于某个提交」才放行；用一个假宿主把全自动那一轮跑通，并钉住「判定不过就绝不动手」 |
+| `tests/resume-queue.test.mjs` | 续接队列的契约：记录读得回来（缺文件、半条坏行都不炸）、消息 id 内容确定性、投出去那一行真的消失、失败只分「丢」与「再试」两类 |
 | `tests/restart-host.test.mjs` | worker 的契约：起它必须走 WMI/schtasks（在宿主进程树外，否则会被自己的 taskkill 收掉），以及每种失败形状都要落到账上 |
 
 仿真器用 `tests/dsh-tools-stub.mjs` 复刻官方 author-schema 校验——工具定义若在真实注册处会抛错，测试里同样会抛。
@@ -354,6 +355,13 @@ npm run judge                   # 全自动一轮：判定 → 通过就重启�
   「退出并重启」要人确认的就是这件事。要体面那一下，就自己点托盘，然后跑
   `npm run judge -- verify` 让裁判核对。详见 `E2E-GUARD.md`「重启裁判」一节。
 
+   重启之后那一轮也不用你接：会话历史跨重启原样续上，而裁判在交出重启之前会把
+   「这一轮没说完的话」写进 `<DSH_HOME>/.shadow-verify/resume-queue.jsonl`；下一个宿主
+   起来 30 秒后，插件半边把它投递回同一个会话（`resolveAgent` + `send(..., 'next-turn',
+   true)`）并踢出一个新回合——于是改一次宿主半边，人从「同步、重启、等自报」变成
+   「同步、跑裁判」，连「再发一句消息」都省了。详见 `E2E-GUARD.md`
+   「为什么重启之后对话能自己接上」。
+
   杀、拉、核对三件事都由 `scripts/restart-host.mjs` 做，它由 WMI 或计划任务服务承载，
   **不在宿主的进程树里**——裁判自己跑在树里，它的 taskkill 会连它自己一起收掉
   （0.7.1 实测过，整轮以「应用不退」告终）。裁判起完 worker 就返回。
@@ -379,10 +387,11 @@ npm run judge                   # 全自动一轮：判定 → 通过就重启�
 ### 目录结构
 
 ```
-lib/index.js         host 半边：给影子目录里的会话钉权限身份
+lib/index.js         host 半边：给影子目录里的会话钉权限身份；挂载后投递续接队列
 lib/tools.js         三个模型可见工具的注册与效应
 lib/dispatch-core.js 纯判断核（无 host 依赖，可被 plain Node 直接导入）
 lib/live-core.js     可热换的判断核：改规则不必重启宿主
+lib/resume-queue.js  续接队列：重启后把没说完的话投递回原会话（裁判与插件共用的纯逻辑）
 lib/shadow-dir.js    「影子目录」规则的唯一所有者
 lib/build-stamp.js   构建戳：挂载时自报加载了哪些字节
 lib/client.js        浏览器半边：侧栏入口与面板

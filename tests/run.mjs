@@ -33,6 +33,12 @@ const suites = [
   // "only for bytes a named commit contains", and the round runs end to end
   // against a fake host so no test ever touches a real process.
   { label: 'verify-restart', args: [path.join(TESTS, 'verify-restart.test.mjs')] },
+  // The resume queue is what keeps the self-iteration loop closed: the round that
+  // restarts the host leaves a message behind, and the next host delivers it to
+  // the same session and kicks a new turn. Its contract — a torn line survives,
+  // ids are content-derived, a delivered entry is really gone, and only two
+  // failure classes exist — is pinned here against scratch files.
+  { label: 'resume-queue', args: [path.join(TESTS, 'resume-queue.test.mjs')] },
   // The worker that performs the restart lives outside the host's process tree,
   // because the judge would otherwise be killed by its own taskkill. Both halves
   // of that claim — the spawn path and the failure shapes — are pinned offline.

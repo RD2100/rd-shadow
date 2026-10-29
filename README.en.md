@@ -350,6 +350,8 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
 
   The worker also **waits for the host log to fall quiet before it kills** (120s by default, 15 minutes at most): the plugin and the live conversation share the host process, so killing the host cuts the current turn in half, and a quiet log is the host's way of saying "this turn is over" (it writes nothing at all when idle). So run `npm run judge` as the last step of a turn and the restart will not interrupt it. See "Restart judge" in [E2E-GUARD.md](E2E-GUARD.md).
 
+  And the turn after the restart needs nobody either (0.9.0): a Session's history survives a restart intact, but the half-turn that was cut used to stay dead until a human typed something. Once the judge has handed the restart over, it writes one line to `<DSH_HOME>/.shadow-verify/resume-queue.jsonl` naming that very Session; about thirty seconds after the next host mounts, the plugin's host half delivers it through the host's own session entry (`resolveAgent` + `send(..., 'next-turn', true)`) and kicks a new turn. So a host-half change costs "sync, run the judge" — no follow-up message either. See "Why the conversation continues by itself after a restart" in [E2E-GUARD.md](E2E-GUARD.md).
+
 - **Changing the rules needs no restart at all** (0.8.0): most edits touch only `lib/dispatch-core.js` — the pure decision core, with no host dependencies — while the host half does not change at all. The guard looks at that file every 5 seconds, swaps it in when the bytes differ, and reports which bytes it swapped to. So:
 
   ```sh
@@ -362,10 +364,11 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
 ### Layout
 
 ```
-lib/index.js         host half: pins the permission identity of Sessions in the shadow directory
+lib/index.js         host half: pins the permission identity of Sessions in the shadow directory; delivers the resume queue after a restart
 lib/tools.js         registration and effects for the three model-visible tools
 lib/dispatch-core.js pure judgement core (no host dependency; importable by plain Node)
 lib/live-core.js     the swappable core: changing the rules needs no host restart
+lib/resume-queue.js  the resume queue: after a restart, delivers what was left unsaid back to its Session (pure logic, shared by the judge and the plugin)
 lib/shadow-dir.js    the single owner of the shadow-directory rule
 lib/build-stamp.js   the build stamp: reports at mount which bytes it loaded
 lib/live-core.js     the swappable core: changing the rules needs no host restart

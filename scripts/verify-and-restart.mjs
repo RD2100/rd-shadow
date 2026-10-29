@@ -24,6 +24,13 @@
  * 它的 taskkill 才跑得完。裁判起完 worker 就返回，随后被那一下 taskkill 收掉——
  * 这是设计，不是事故；结局由 worker 写进小本本。
  *
+ * 重启交出去之后，裁判还把这一轮没说完的话写进续接队列
+ * （`<DSH_HOME>/.shadow-verify/resume-queue.jsonl`）：会话跨重启原样续上，但被斩的
+ * 那半轮不会自己回来。队列里那一条由下一个宿主里本插件的半边投递回同一个会话
+ * （`resolveAgent` + `send(..., 'next-turn', true)`）并踢出新回合，所以自我迭代的
+ * 闭环不再需要人戳一下。入队发生在重启真的交出去之后——否则下一句「宿主刚重启」
+ * 会是假话。没有 `DSH_SESSION_ID`（从终端手跑裁判）就无从谈起，不写。
+ *
  * 用法：
  *   node scripts/verify-and-restart.mjs arm --commit <sha>   记账：这一轮要加载的提交（默认 HEAD）
  *   node scripts/verify-and-restart.mjs                       全自动：判定 → 通过就把重启交给 worker
@@ -53,6 +60,12 @@ import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
+
+import {
+  appendResumeEntry,
+  makeResumeEntry,
+  resumeQueuePath,
+} from '../lib/resume-queue.js'
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..')
 const PACKAGE = 'dsh-plugin-shadow'
@@ -514,9 +527,15 @@ async function runAll(options, home, ledger, armed, restart = restartApp) {
     stage: 'restart',
     detail: 'the worker was started outside the host process tree; it kills, relaunches and verifies',
   })
+  // 重启真的交出去了，才把续接消息入队——否则下一句「宿主刚重启」会是假话。
+  // 队列由下一个宿主的插件半边投递，所以这里写完就不管了。
+  const queued = enqueueResume({ home, ledger, expect: expected ?? '' })
   // 之后的事不在裁判手里：worker 会杀掉这个进程树，裁判活不过那一下。
   // 结局由 worker 写进小本本，`npm run judge status` 能看到。
-  return { ok: true, detail: 'restart delegated to the worker; see the ledger for relaunch and verify', stage: 'restart' }
+  const tail = queued === undefined
+    ? 'see the ledger for relaunch and verify'
+    : `see the ledger for relaunch and verify; ${queued}`
+  return { ok: true, detail: `restart delegated to the worker; ${tail}`, stage: 'restart' }
 }
 
 /**
@@ -533,6 +552,30 @@ function sleep(ms) {
  */
 function messageOf(error) {
   return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * 重启交出去之后，把这一轮没说完的话写进续接队列。
+ *
+ * 会话本身跨重启原样续上（历史在 `session.v4.jsonl.zstd`），但被斩的那半轮不会
+ * 自己回来——入队这一条，插件的宿主半边就会在下一个宿主启动时把它投递回同一个
+ * 会话并踢出一个新回合。「改一次宿主半边就要人戳一下」这件事到这里为止。
+ *
+ * 裁判跑在会话的进程树里，`DSH_SESSION_ID` 就是发起这一轮的那个会话；没有它
+ * （比如从终端里手跑裁判）就无从谈起，什么都不写。
+ * @param {{home: string, ledger: string, expect: string}} round - 这一轮的参数。
+ * @returns {string | undefined} 入队说明；没有会话可接时为 undefined。
+ */
+function enqueueResume(round) {
+  const sessionId = process.env.DSH_SESSION_ID
+  if (typeof sessionId !== 'string' || sessionId.length === 0) return undefined
+  const text = [
+    '【自动续接】宿主刚按裁判轮重启：worker 等宿主日志安静 120 秒（意味着上一轮说完了）→ 杀 → 拉 → 核对。',
+    `这是同一场对话的自动继续，不是新任务：请读取 ${round.ledger} 的最后几条，核对本轮 restart / relaunch / verify 的结局（预期构建戳 ${round.expect === '' ? '未知' : round.expect}），向用户汇报，然后接着做重启前未完成的事。`,
+  ].join('\n')
+  const entry = makeResumeEntry({ sessionId, text, at: new Date().toISOString() })
+  appendResumeEntry(resumeQueuePath(round.home), entry)
+  return `resume queued for ${sessionId} (${entry.messageId}); that conversation continues by itself after the restart`
 }
 
 /**
