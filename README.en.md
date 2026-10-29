@@ -298,7 +298,7 @@ The last one decides for itself whether the deployed copy equals that commit, re
 | `tests/patch.check.mjs` | Parses `cordis.patch.yml` (including `!!js`) and asserts the shadow rows are intact; needs `js-yaml` (installed via `npm install`, or point `JS_YAML` at it) |
 | `tests/build-stamp.test.mjs` | The build stamp's contract: the hash follows the bytes (one changed byte, one added file, both move it), and unreadable files report null instead of breaking the mount |
 | `tests/verify-restart.test.mjs` | The restart judge's contract: a restart is cleared only when the deployed copy equals a named commit byte for byte; the automatic round runs end to end against a fake host, and "no judge pass, no restart" is pinned by counting the fake's calls |
-| `tests/restart-host.test.mjs` | The worker's contract: it must be started through WMI or schtasks (outside the host's process tree, or its own taskkill takes it down), and every failure shape has to land on the ledger |
+| `tests/restart-host.test.mjs` | The worker's contract: killing, relaunching and verifying all belong to it (it must be started through WMI or schtasks, outside the host's process tree, or its own taskkill takes it down), and every failure shape has to land on the ledger |
 | `scripts/pack-check.mjs` | The published artifact: every `lib/*.js` included, entry points exist, runtime imports stay inside the shipped set, a copy of only those files still passes the tools suite |
 
 The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-schema validation — a tool definition that would throw at the real registration site throws here too.
@@ -344,9 +344,9 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
     node tests/run.mjs --deployed
   ```
 
-- **The restart can go without you too**: `npm run judge` runs "may I restart → restart → did it take effect" in one command. It first decides whether every byte of the deployed copy equals the commit you named (including `cordis.patch.yml` and the version), restarts the host only if it does, then confirms the host's own `shadow: build <hash>` line; the whole round lands in a ledger (`<DSH_HOME>/.shadow-verify/ledger.jsonl`, read it with `npm run judge status`). The cost, stated plainly: it does not wait for the app to quit cleanly, so another running task would be cut off — that is exactly what the product's own "Quit and Restart" asks a human to confirm. For the clean path, click the tray yourself and then run `npm run judge -- verify`. See "Restart judge" in [E2E-GUARD.md](E2E-GUARD.md).
+- **The restart can go without you too**: `npm run judge` runs "may I restart → restart → did it take effect" in one command. It first decides whether every byte of the deployed copy equals the commit you named (including `cordis.patch.yml` and the version), and hands the restart to a worker only if it does; the whole round lands in a ledger (`<DSH_HOME>/.shadow-verify/ledger.jsonl`, read it with `npm run judge status`). The cost, stated plainly: it does not wait for the app to quit cleanly, so another running task would be cut off — that is exactly what the product's own "Quit and Restart" asks a human to confirm. For the clean path, click the tray yourself and then run `npm run judge -- verify`. See "Restart judge" in [E2E-GUARD.md](E2E-GUARD.md).
 
-  The restart itself is performed by `scripts/restart-host.mjs`, started outside the host's process tree (hosted by WMI or the scheduler) — the judge runs inside that tree, so its own `taskkill` would kill it before it could relaunch anything.
+  Killing, relaunching and verifying are all done by `scripts/restart-host.mjs`, hosted by WMI or the scheduler and therefore **outside the host's process tree** — the judge runs inside that tree, so its own `taskkill` would take it down with the host (measured in 0.7.1: the round ended with "the app did not exit"). The judge returns as soon as the worker is started.
 
 ### Layout
 

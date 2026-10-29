@@ -348,14 +348,15 @@ npm run judge                   # 全自动一轮：判定 → 通过就重启�
 
 - **重启也可以不点**：`npm run judge` 把「该重启吗 → 重启 → 生效了吗」一条命令跑完。
   它先判定部署副本的每个字节是否等于你指定的那个提交（含 `cordis.patch.yml` 与版本号），
-  通过才重启宿主，再核对宿主自报的 `shadow: build <哈希>`；全程写进小本本
+  通过才把重启交给 worker；全程写进小本本
   （`<DSH_HOME>/.shadow-verify/ledger.jsonl`，`npm run judge status` 查看）。
   代价说清楚：它不等应用体面退出，万一有别的任务在跑会被硬断——产品自带的
   「退出并重启」要人确认的就是这件事。要体面那一下，就自己点托盘，然后跑
   `npm run judge -- verify` 让裁判核对。详见 `E2E-GUARD.md`「重启裁判」一节。
 
-  重启本身由 `scripts/restart-host.mjs` 做，它被起到宿主的进程树之外（WMI 或计划任务
-  承载）——裁判跑在树里，`taskkill` 一发自己也会死，所以拉应用的不能是它。
+  杀、拉、核对三件事都由 `scripts/restart-host.mjs` 做，它由 WMI 或计划任务服务承载，
+  **不在宿主的进程树里**——裁判自己跑在树里，它的 taskkill 会连它自己一起收掉
+  （0.7.1 实测过，整轮以「应用不退」告终）。裁判起完 worker 就返回。
 
 ### 目录结构
 

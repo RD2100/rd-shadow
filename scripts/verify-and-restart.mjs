@@ -19,13 +19,21 @@
  * 所以万一有别的任务在跑，会被硬断。要体面那一下，就自己点托盘，然后用 verify 子命令
  * 让裁判核对。
  *
+ * 裁判自己跑在宿主的进程树里，所以它不杀进程：杀、拉、核对三件事都交给
+ * `scripts/restart-host.mjs`，那个 worker 由 WMI 或计划任务服务承载，不在树里，
+ * 它的 taskkill 才跑得完。裁判起完 worker 就返回，随后被那一下 taskkill 收掉——
+ * 这是设计，不是事故；结局由 worker 写进小本本。
+ *
  * 用法：
  *   node scripts/verify-and-restart.mjs arm --commit <sha>   记账：这一轮要加载的提交（默认 HEAD）
- *   node scripts/verify-and-restart.mjs                       全自动：判定 → 通过就重启 → 核对宿主
+ *   node scripts/verify-and-restart.mjs                       全自动：判定 → 通过就把重启交给 worker
  *   node scripts/verify-and-restart.mjs judge                 只判定「允许重启吗」
  *   node scripts/verify-and-restart.mjs verify                只核对「宿主加载对了吗」
  *   node scripts/verify-and-restart.mjs watch                 挂上之后：每个新 arm 自己跑完全程
  *   node scripts/verify-and-restart.mjs status                看小本本
+ *
+ * 跑完默认动作后，杀进程与核对都在 worker 手里，裁判活不过那一下 taskkill；
+ * 用 `status` 看 relaunch 与 verify 两行的结局。
  *
  * 测试与 CI 走 judge/--dry-run，不碰进程、不读宿主日志之外的东西。
  */
@@ -402,7 +410,6 @@ async function runAll(options, home, ledger, armed, restart = restartApp) {
   if (!judged.ok) return { ok: false, detail: `refused to restart — ${judged.detail}`, stage: 'judge' }
   if (options.dryRun) return { ok: true, detail: `${judged.detail} (dry run: nothing was restarted)`, stage: 'judge' }
 
-  const before = logOffset(home)
   const expected = await expectedHash(armed.commit, options.repoRoot)
   try {
     restart({ home, ledger, commit: armed.commit, expect: expected ?? '' })
@@ -411,10 +418,16 @@ async function runAll(options, home, ledger, armed, restart = restartApp) {
     appendLedger(ledger, { kind: 'outcome', commit: armed.commit, ok: false, stage: 'restart', detail })
     return { ok: false, detail, stage: 'restart' }
   }
-  appendLedger(ledger, { kind: 'outcome', commit: armed.commit, ok: true, stage: 'restart', detail: 'the host was restarted' })
-
-  const verified = await runVerify(options, home, ledger, { ...armed, logOffset: before })
-  return { ...verified, stage: 'verify' }
+  appendLedger(ledger, {
+    kind: 'outcome',
+    commit: armed.commit,
+    ok: true,
+    stage: 'restart',
+    detail: 'the worker was started outside the host process tree; it kills, relaunches and verifies',
+  })
+  // 之后的事不在裁判手里：worker 会杀掉这个进程树，裁判活不过那一下。
+  // 结局由 worker 写进小本本，`npm run judge status` 能看到。
+  return { ok: true, detail: 'restart delegated to the worker; see the ledger for relaunch and verify', stage: 'restart' }
 }
 
 /**
@@ -480,8 +493,10 @@ function launchApp() {
  * 那一下重启。见文件头：产品自带的路径都要人确认「现在没有要紧任务在跑」，
  * 开发环里这个确认由判定代做；代价是它不等应用体面退出。
  *
- * 顺序要紧：先把 worker 起到宿主进程树之外，再 taskkill。裁判自己就在那棵树里，
- * taskkill 一发它也会死——所以拉应用的必须是 worker，不是这里。
+ * 只起 worker，不杀。裁判跑在宿主的进程树里，它的 taskkill 会连它自己一起收掉——
+ * 0.7.1 实测过：判定通过、worker 也起来了，但裁判的 taskkill 半路把自己杀掉，
+ * 60 秒后 worker 看到应用还活着，整轮报废。所以杀、拉、核对三件事都归 worker，
+ * 裁判把自己会死这件事变成设计而不是事故。
  * 测试注入一个假的进来，于是「判定不过就绝不动手」这条也能被钉住。
  * @param {{home: string, ledger: string, commit: string, expect: string}} round - 这一轮的参数。
  * @param {(command: string) => void} [starter] - 起 worker 的方式，测试注入假的。
@@ -489,7 +504,6 @@ function launchApp() {
  */
 function restartApp(round, starter = spawnWorkerOutsideTree) {
   starter(workerCommand(round))
-  killApp()
 }
 
 /**

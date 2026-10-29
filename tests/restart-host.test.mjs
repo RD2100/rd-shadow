@@ -17,7 +17,7 @@
  *
  * Usage: node tests/restart-host.test.mjs
  */
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -25,7 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 
 const { runWorker, waitForExit } = await import(pathToFileURL(path.join(ROOT, 'scripts', 'restart-host.mjs')).href)
-const { readLedger, spawnWorkerOutsideTree, workerCommand } = await import(
+const { logOffset, readLedger, spawnWorkerOutsideTree, waitForHost, workerCommand } = await import(
   pathToFileURL(path.join(ROOT, 'scripts', 'verify-and-restart.mjs')).href)
 
 const EXPECT = '2d34d559ff9f'
@@ -80,28 +80,32 @@ function hostReports(log, stamp = EXPECT) {
   appendFileSync(log, `2026-01-01T00:00:01.000Z [info] shadow: build ${stamp} over 6 files\n`)
 }
 
-// 1. The happy path: the app is already gone, the relaunch happens, the host
-// reports the expected stamp. Everything is on the ledger.
+// 1. The happy path: the app is running, the worker kills it, waits, relaunches,
+// and the host reports the expected stamp. Everything is on the ledger.
 {
   const { home, ledger, log } = makeHome()
   const launches = []
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT }, {
-    isRunning: () => false,
+  const kills = []
+  let running = true
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => { kills.push(1); running = false },
+    isRunning: () => running,
     launch: (app) => { launches.push(app) },
     wait: async () => { hostReports(log); return { ok: true, detail: 'the host reported the expected build' } },
   })
   const stages = readLedger(ledger).filter((e) => e.kind === 'outcome').map((e) => `${e.stage}:${e.ok ? 'ok' : 'FAIL'}`)
-  check('a clean round relaunches and confirms', result.ok && launches.length === 1, result.detail)
+  check('a clean round kills, relaunches and confirms', result.ok && kills.length === 1 && launches.length === 1, result.detail)
   check('both stages are on the ledger', stages.join(',') === 'relaunch:ok,verify:ok', stages.join(','))
 }
 
-// 2. An app that is still dying: the worker waits instead of launching a second
-// instance on top of the first.
+// 2. An app that is still dying after the kill: the worker waits instead of
+// launching a second instance on top of the first.
 {
   const { home, ledger, log } = makeHome()
   let polls = 0
   const launches = []
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => {},
     isRunning: () => { polls += 1; return polls < 3 },
     launch: (app) => { launches.push(app) },
     wait: async () => { hostReports(log); return { ok: true, detail: 'the host reported the expected build' } },
@@ -113,7 +117,8 @@ function hostReports(log, stamp = EXPECT) {
 {
   const { home, ledger } = makeHome()
   const launches = []
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => {},
     isRunning: () => true,
     launch: (app) => { launches.push(app) },
     wait: async () => ({ ok: true, detail: 'unreachable' }),
@@ -123,10 +128,37 @@ function hostReports(log, stamp = EXPECT) {
   check('the failure is on the ledger', last?.stage === 'relaunch' && last.ok === false)
 }
 
-// 4. A relaunch that throws is recorded rather than swallowed.
+// 4. A kill that throws is recorded rather than swallowed.
 {
   const { home, ledger } = makeHome()
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => { throw new Error('access denied') },
+    isRunning: () => true,
+    launch: () => {},
+    wait: async () => ({ ok: true, detail: 'unreachable' }),
+  })
+  check('a failed kill is recorded', !result.ok && result.detail.includes('access denied'), result.detail)
+}
+
+// 5. An app that is already gone is relaunched without a kill: the worker must
+// not demand a kill it has nothing to kill.
+{
+  const { home, ledger, log } = makeHome()
+  const kills = []
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => { kills.push(1) },
+    isRunning: () => false,
+    launch: () => {},
+    wait: async () => { hostReports(log); return { ok: true, detail: 'the host reported the expected build' } },
+  })
+  check('an already-gone app is relaunched without a kill', result.ok && kills.length === 0, result.detail)
+}
+
+// 6. A relaunch that throws is recorded rather than swallowed.
+{
+  const { home, ledger } = makeHome()
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => {},
     isRunning: () => false,
     launch: () => { throw new Error('the executable is gone') },
     wait: async () => ({ ok: true, detail: 'unreachable' }),
@@ -134,10 +166,11 @@ function hostReports(log, stamp = EXPECT) {
   check('a failed relaunch is recorded', !result.ok && result.detail.includes('the executable is gone'), result.detail)
 }
 
-// 5. A host that reports the wrong build is a failed round, not a silent one.
+// 7. A host that reports the wrong build is a failed round, not a silent one.
 {
   const { home, ledger } = makeHome()
-  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT }, {
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => {},
     isRunning: () => false,
     launch: () => {},
     wait: async () => ({ ok: false, detail: 'the host reported a different build' }),
@@ -145,14 +178,14 @@ function hostReports(log, stamp = EXPECT) {
   check('a wrong build fails the round', !result.ok && readLedger(ledger).some((e) => e.stage === 'verify' && !e.ok), result.detail)
 }
 
-// 6. The exit wait itself is pure enough to test directly, including its timeout.
+// 8. The exit wait itself is pure enough to test directly, including its timeout.
 {
   const never = await waitForExit(() => true, 1_000)
   const atOnce = await waitForExit(() => false, 1_000)
   check('the exit wait gives up and reports it', never === false && atOnce === true)
 }
 
-// 7. The load-bearing property: the worker is started outside the host's process
+// 9. The load-bearing property: the worker is started outside the host's process
 // tree. WMI first, schtasks as the fallback, and never a direct child of the judge.
 {
   const command = workerCommand({ home: 'C:\\DSH', ledger: 'C:\\DSH\\.shadow-verify\\ledger.jsonl', commit: COMMIT, expect: EXPECT })
@@ -179,7 +212,25 @@ function hostReports(log, stamp = EXPECT) {
     && !doomed.some(([file]) => file === 'node' || file === process.execPath), doomed.map((c) => c[0]).join(','))
 }
 
-// 8. The worker's own argument parsing refuses an incomplete invocation rather
+// 10. The verification starts from the log's current length, not from zero:
+// a rotated log would otherwise offer the previous boot's build line and the
+// round would pass without the new host ever having come up.
+{
+  const { home, ledger, log } = makeHome()
+  appendFileSync(log, '2026-01-01T00:00:00.000Z [info] shadow: build 2d34d559ff9f over 6 files\n')
+  const before = statSync(log).size
+  let seen = -1
+  const result = await runWorker({ home, ledger, expect: EXPECT, commit: COMMIT, graceMs: 0 }, {
+    kill: () => {},
+    isRunning: () => false,
+    launch: () => {},
+    wait: async (h, expected, from) => { seen = from; return waitForHost(h, expected, from) },
+    offset: (h) => logOffset(h),
+  })
+  check('a stale build line before the offset does not count', !result.ok && seen === before, `offset ${String(seen)} vs ${String(before)}`)
+}
+
+// 11. The worker's own argument parsing refuses an incomplete invocation rather
 // than starting with an empty expectation.
 {
   let refused = false

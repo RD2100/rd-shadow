@@ -177,16 +177,20 @@ pwsh(26312) ← DSH NEXT.exe(4236) ← DSH NEXT.exe(15572) ← DSH NEXT.exe(7316
 ```
 
 宿主是裁判的**祖先进程**，所以裁判一旦 `taskkill /F /T /IM "DSH NEXT.exe"`，自己也会被收掉——
-死在拉起应用之前，应用不会回来，核对也不会发生。0.7.0 正是这个形状，判定能过、重启是空的。
+死在拉起应用之前，应用不会回来，核对也不会发生。0.7.1 正是这个形状：判定通过、worker 也由
+WMI 起来了，但裁判的 taskkill 连它自己一起收掉，60 秒后 worker 看到应用还活着，整轮以
+「应用不退」告终。
 
-于是重启与核对交给 `scripts/restart-host.mjs`，由 WMI（`Invoke-CimMethod Win32_Process Create`，
-WMI 优先，不用注册不用清理）或计划任务服务（`schtasks` 兜底）承载——两者都是 Windows 服务
-起进程，不在宿主的树里。裁判先把 worker 起到树外，**然后才** taskkill；它自己死掉没关系，
-worker 会收尾，并把 `relaunch`/`verify` 两行写进小本本。测试里这条性质是被钉住的：
-起 worker 的那一下走 WMI 或 schtasks，**绝不**是裁判的子进程。
+于是**杀、拉、核对三件事都归 `scripts/restart-host.mjs`**，由 WMI
+（`Invoke-CimMethod Win32_Process Create`，优先，不用注册不用清理）或计划任务服务
+（`schtasks` 兜底）承载——两者都是 Windows 服务起进程，不在宿主的树里，taskkill 才跑得完。
+裁判只做判定和交接：起完 worker 就返回，并在小本本里写一行 `restart`；它自己活不过那一下
+taskkill，这是设计。worker 动手前等三秒，让裁判的输出和小本本先落地。
 
-还没人做的一次实测：让 `npm run judge` 真跑一遍，看应用是否自己回来、账上是否多出
-`relaunch:ok` 与 `verify:ok` 两行。这是 0.7.1 唯一的验收项。
+测试里这条性质是被钉住的：起 worker 的那一下走 WMI 或 schtasks，**绝不**是裁判的子进程。
+
+还没做的一次实测（0.7.2 的验收项）：让 `npm run judge` 真跑一遍，看应用是否自己回来、
+账上是否依次出现 `judge:ok`、`restart:ok`、`relaunch:ok`、`verify:ok` 四行。
 
 ## 判读表
 

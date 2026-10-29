@@ -221,9 +221,10 @@ check('a missing deployed copy fails', !judge(staged.commit, path.join(staged.re
   check('an unknown argument is refused', refused)
 }
 
-// 12. 全自动的一轮：判定通过才重启，重启后等宿主自认。这里用一个假的重启——
-// 它把宿主的自报行写进日志，模拟应用回来那一刻——于是整条链能在测试里跑完，
-// 且完全不碰真进程。假重启同时是被监视的对象：判定不过时它一次都不该被调用。
+// 12. 全自动的一轮：判定通过就把重启交给 worker。这里用一个假的重启——
+// 它把宿主的自报行写进日志，模拟应用回来那一刻。裁判自己活不过那一下 taskkill
+// （它跑在宿主的进程树里），所以它交完就返回：账上到 restart 为止，
+// relaunch 与 verify 由 worker 写。测试同时盯着裁判有没有多管闲事去杀进程。
 {
   const target = deploy(staged)
   const home = scratch('home')
@@ -232,16 +233,16 @@ check('a missing deployed copy fails', !judge(staged.commit, path.join(staged.re
   const ledger = path.join(scratch('ledger3'), 'ledger.jsonl')
   const stamp = await expectedHash(staged.commit, staged.repo)
   const calls = []
-  const fakeRestart = () => {
-    calls.push(Date.now())
+  const fakeRestart = (round) => {
+    calls.push(round)
     appendFileSync(path.join(home, 'logs', 'desktop-next.log'),
       `2026-01-01T00:00:01.000Z [info] shadow: build ${String(stamp)} over 6 files\n`)
   }
   const options = { dryRun: false, deployed: target, dshHome: home, repoRoot: staged.repo }
   const result = await runAll(options, home, ledger, { commit: staged.commit }, fakeRestart)
-  check('a matching copy restarts and the host confirms', result.ok && calls.length === 1, result.detail)
   const stages = readLedger(ledger).filter((e) => e.kind === 'outcome').map((e) => e.stage)
-  check('the whole round is on the ledger', JSON.stringify(stages) === JSON.stringify(['judge', 'restart', 'verify']), stages.join(','))
+  check('a matching copy hands the restart to the worker', result.ok && calls.length === 1 && calls[0].expect === stamp, result.detail)
+  check('the judge stops at the handover', JSON.stringify(stages) === JSON.stringify(['judge', 'restart']), stages.join(','))
 }
 
 // 13. 判定不过就绝不动手：这是整条链唯一的安全性质，所以直接用真进程计数来钉。

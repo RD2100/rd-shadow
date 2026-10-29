@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 /**
- * 重启 worker：在宿主的进程树之外把应用拉起来，并核对它自报的构建戳。
+ * 重启 worker：在宿主的进程树之外，把应用杀掉、拉起，并核对它自报的构建戳。
  *
  * 为什么需要它：裁判（verify-and-restart.mjs）自己跑在宿主的进程树里——宿主是它所有
  * 祖先进程中的一个。所以裁判一旦 taskkill 应用，自己也会跟着死，死在拉起应用之前。
- * 于是重启与核对必须交给一个不在那棵树里的进程：本文件由 WMI 或计划任务服务承载，
- * 裁判把它起到树外，然后才 taskkill。裁判死掉没关系，worker 会收尾，并把每一阶段
- * 写进小本本——重启被打断、应用没起来，都在账上看得见。
+ * 0.7.1 实测过这个形状：判定通过、worker 也起来了，但裁判的 taskkill 连它自己一起收掉，
+ * 60 秒后 worker 看到应用还活着，整轮以「应用不退」告终。
  *
- * 它做四件事：等应用退出 → 拉起应用 → 等宿主日志出现 `shadow: build <期望戳>`
- * （撞见 `did not activate` 即失败，超时即失败）→ 退出码 0/1。
+ * 于是三件事都归 worker：杀、拉、核对。它由 WMI（`Invoke-CimMethod Win32_Process Create`）
+ * 或计划任务服务承载，都不在宿主的进程树里，所以它的 taskkill 能跑完。
  *
- * 三个动作（应用是否在跑、拉起、等日志）都是可注入的探针，否则这套逻辑没法离线测。
+ * 它做四件事：等一小会儿（让裁判的输出落地）→ 杀应用并等它退 → 拉起应用 →
+ * 等宿主日志出现 `shadow: build <期望戳>`（撞见 `did not activate` 即失败，超时即失败）。
+ *
+ * 四个动作（杀、应用是否在跑、拉起、等日志）都是可注入的探针，否则这套逻辑没法离线测。
  *
  * 用法：node scripts/restart-host.mjs --expect <hash> --ledger <path> --home <dsh-home> --commit <sha>
  */
@@ -20,13 +22,18 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
-import { appendLedger, waitForHost } from './verify-and-restart.mjs'
+import { appendLedger, logOffset, waitForHost } from './verify-and-restart.mjs'
 
 const APP_IMAGE = 'DSH NEXT.exe'
 const APP_EXE = 'C:\\Program Files\\DSH NEXT\\DSH NEXT.exe'
 /** 等应用退出的最长时间。taskkill /F 之后通常几百毫秒；给到一分钟是给慢机器留余量。 */
 const EXIT_TIMEOUT_MS = 60_000
 const EXIT_POLL_MS = 500
+/**
+ * 动手前的宽限期。裁判要在小本本里写「已交给 worker」并把自己的输出交出去，
+ * 这几秒就是给它落地用的；worker 不在宿主的进程树里，等得起。
+ */
+const GRACE_MS = 3_000
 
 /**
  * 应用是否在跑。
@@ -44,6 +51,19 @@ function isRunning() {
 }
 
 /**
+ * 杀应用。Electron 会开一串进程，只关主窗口会留下孤儿渲染进程，而它们也持着旧代码，
+ * 所以连子进程一起收。/T 会把调用方的整个树都收掉——这正是它必须在进程树外执行的原因。
+ * @returns {void}
+ */
+function killApp() {
+  try {
+    execFileSync('taskkill', ['/F', '/T', '/IM', APP_IMAGE], { stdio: 'ignore' })
+  } catch {
+    // 本来就没在跑：不是失败，只是没什么可杀。
+  }
+}
+
+/**
  * 拉起应用。走 `cmd /c start` 而不是直接 spawn：多一层 cmd 之后新进程不继承本进程的句柄。
  * @param {string} app - 可执行文件路径。
  * @returns {void}
@@ -54,9 +74,11 @@ function launchApp(app) {
 
 /** 默认探针。 */
 const defaultProbes = () => ({
+  kill: () => { killApp() },
   isRunning,
   launch: (app) => { launchApp(app) },
   wait: (home, expected, from) => waitForHost(home, expected, from),
+  offset: (home) => logOffset(home),
 })
 
 /**
@@ -91,9 +113,9 @@ async function waitForExit(isRunning, timeoutMs) {
 }
 
 /**
- * 跑完一轮：等退出 → 拉起 → 核对。
- * @param {{home: string, ledger: string, expect: string, commit: string, app?: string, readyMs?: number}} options - 参数。
- * @param {{isRunning?: () => boolean, launch?: (app: string) => void, wait?: Function}} [probes] - 探针，测试注入假的。
+ * 跑完一轮：等一小会儿 → 杀并等它退 → 拉起 → 核对。
+ * @param {{home: string, ledger: string, expect: string, commit: string, app?: string, graceMs?: number}} options - 参数。
+ * @param {{kill?: () => void, isRunning?: () => boolean, launch?: (app: string) => void, wait?: Function, offset?: () => number}} [probes] - 探针，测试注入假的。
  * @returns {Promise<{ok: boolean, detail: string}>} 结局。
  */
 async function runWorker(options, probes) {
@@ -105,9 +127,20 @@ async function runWorker(options, probes) {
     return { ok, detail }
   }
 
-  note(options.home, `worker started; expecting build ${options.expect}`)
-  if (!(await waitForExit(p.isRunning, EXIT_TIMEOUT_MS))) {
-    return record(false, 'relaunch', `the app did not exit within ${String(EXIT_TIMEOUT_MS / 1000)}s`)
+  note(options.home, `worker started; expecting build ${options.expect}; killing the app in ${String((options.graceMs ?? GRACE_MS) / 1000)}s`)
+  await sleep(options.graceMs ?? GRACE_MS)
+
+  // 杀。裁判不做这一下——它在宿主的进程树里，taskkill 连它自己一起收掉，
+  // 0.7.1 就是这么整轮报废的。worker 在树外，它的 taskkill 能跑完。
+  if (p.isRunning()) {
+    try {
+      p.kill()
+    } catch (error) {
+      return record(false, 'relaunch', `the kill itself failed — ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!(await waitForExit(p.isRunning, EXIT_TIMEOUT_MS))) {
+      return record(false, 'relaunch', `the app did not exit within ${String(EXIT_TIMEOUT_MS / 1000)}s`)
+    }
   }
 
   try {
@@ -119,9 +152,18 @@ async function runWorker(options, probes) {
   record(true, 'relaunch', 'the app was relaunched')
 
   // 从"应用已经不在"这一刻算起：此后的构建戳行只可能来自新起来的那一个。
-  const from = 0
+  // 取当前日志长度而不是 0——按天切分时旧文件可能还在，偏移量为 0 会读到上一轮的行。
+  const from = p.offset(options.home)
   const result = await p.wait(options.home, options.expect, from)
   return record(result.ok, 'verify', result.detail)
+}
+
+/**
+ * @param {number} ms - 毫秒。
+ * @returns {Promise<void>} 到点兑现。
+ */
+function sleep(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms) })
 }
 
 /**
@@ -157,8 +199,11 @@ async function main() {
   if (!result.ok) process.exitCode = 1
 }
 
+export { isRunning, parseArgs, runWorker, waitForExit }
+
 const invokedDirectly = process.argv[1] !== undefined
   && import.meta.url === pathToFileURL(process.argv[1]).href
+
 if (invokedDirectly) await main()
 
-export { isRunning, parseArgs, runWorker, waitForExit }
+if (invokedDirectly) await main()
