@@ -2,6 +2,15 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 文档
+
+- 记下影子线三条待办（只备注，运行时未改）。优先级和边界的正文在 [DESIGN.md](DESIGN.md) §11，摘要在 README「影子线待办」/ README.en「Shadow-line backlog」。DESIGN §7 旧句「不做工作账本、记忆、订阅、额度池、用量统计」里的「记忆」由记忆条覆盖；账本、订阅、额度池、用量统计仍是非目标。
+  - **P0 — 验证优先闭环**：程序闸门拦住无证据的 `complete`，派活后对得上验收证据。复用 Hooks / goals / plan-mode，闸门和证据用 **dsh-verification**（或等价）；日常 advisory，关键任务 enforce。影子仍只派活 + inspect，不在本包自造验证引擎或账本。
+  - **P1 — 工作项状态面（影子外）**：跨会话可查「谁在做、卡在哪、是否验收通过」。先组合 goals + verification + inspect；不够再挂薄 **work-status** 插件。禁止回流本包。
+  - **影子内置记忆**（决策更新，不并进 P0 / P1）：只管影子域（派活、验收、决策上下文）。项目级记忆交 DSH 自己的机制；不装社区双记插件作为依赖。范围不是项目 MEMORY / PROGRESS 全站双记。
+
 ## [0.7.3] — 2026-10-29
 
 0.7.2 真跑了一轮，两件事现形：**对话被打断**，以及**核对把成功判成失败**。前者是设计漏洞，
