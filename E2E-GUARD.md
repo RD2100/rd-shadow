@@ -325,6 +325,35 @@ verify:ok   the host reported build efe163bfce51
 上下文不缺。至此自我迭代的闭环是：改代码 → `npm test` → `npm run sync` →
 `git commit` → `npm run judge`，人的动作到跑完裁判为止。
 
+（2026-10-30 01:03 又跑了一轮，同样四行 ok、同样 30 秒后投递——队列连续两轮都成立。）
+
+### 一次实测的记录（0.8.0 的热换，2026-10-30 补上）
+
+0.8.0 上线那天没有影子会话挂着，`shadow: live core` 一行都没出现过，所以「换核不重启」
+一直只有离线证据。2026-10-30 00:49 那个宿主启动时恢复了一个影子会话，工具入口挂上，
+于是当场补测（往核里加一行注释、删掉、再按字节复原，一共换了三次）：
+
+```
+00:49:04  shadow: live core 55d0c0f99e96 at mount           ← 影子会话随宿主启动挂上
+00:57:39  shadow: live core 3c89ad9819fe (was 55d0c0f99e96)  ← 加了一行注释，15 秒后自己换上
+00:57:54  shadow: live core 17c98519ec99 (was 3c89ad9819fe)  ← 删回去，又换一次
+00:59:29  shadow: live core 55d0c0f99e96 (was 17c98519ec99)  ← 按字节精确复原，换回原样
+```
+
+裁判：`ok: the guard is running core 55d0c0f99e96 without a restart`（`npm run judge -- live`）。
+对话一次没断，应用一次没重启。至此 0.8.0 的两个承诺——换核不重启、自报哈希——都有实测。
+
+**这一轮踩的坑值得记着**：这个文件在仓库里是 LF、且结尾没有换行；PowerShell 的
+`Add-Content`/`Set-Content` 和 `git checkout`（autocrlf 会把 blob 熏成 CRLF）都会把它
+改成另一个字节形态。git 因为有归一化看不出字节变了，但裁判比的是原始字节，会判
+「部署副本与提交不符」。复原只有一条可靠路子——取回 blob 原文再字节级写回：
+
+    git cat-file blob HEAD:lib/dispatch-core.js > lib/dispatch-core.js
+
+（用 cmd 的重定向；PowerShell 5 的 `>` 按 UTF-16 写，会直接毁文件。）顺带：
+`git checkout` 会把仓库那一侧换成独立 inode，断开「仓库 = 部署副本」的硬链接，
+补回去是删掉仓库文件再 `mklink /h` 链回部署副本。
+
 ## 判读表
 
 | 现象 | 含义 |
