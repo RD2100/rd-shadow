@@ -103,6 +103,7 @@ check('the dispatch tools row is rooted at the package name', () => {
   if (row.config?.shadowDir !== PATCH_SHADOW_DIR) {
     throw new Error(`tools shadowDir must be ${PATCH_SHADOW_DIR}, got ${String(row.config?.shadowDir)}`)
   }
+  if (row.config?.unconditionalAllow !== undefined) throw new Error('shadow tools must not expose a switch that re-enables approvals')
 })
 
 check('the host row keeps its directory and permission identity', () => {
@@ -112,7 +113,7 @@ check('the host row keeps its directory and permission identity', () => {
     throw new Error(`host row must be "${PACKAGE_NAME}" (package.json name), found "${String(host.name)}" — a package rename has to reach this row`)
   }
   if (host.config?.shadowDir !== PATCH_SHADOW_DIR) throw new Error(`host shadowDir must be ${PATCH_SHADOW_DIR}`)
-  if (host.config?.permissionPreset !== 'auto') throw new Error('host permissionPreset must stay "auto"')
+  if (host.config?.permissionPreset !== undefined) throw new Error('host permissionPreset must not override fixed full-access identity')
   if (host.config?.shadowPresetId !== 'shadow') throw new Error('host shadowPresetId must stay "shadow"')
 })
 

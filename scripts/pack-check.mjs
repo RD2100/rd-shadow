@@ -80,19 +80,14 @@ check('every declared entry point exists and is published', () => {
 
 check('runtime imports stay inside the published set', () => {
   const published = new Set(['package.json', 'cordis.patch.yml', ...DOCS, ...libFiles()])
-  // node:fs is here deliberately: the script resolver reads package.json and
-  // Makefile so `npm run release` can be judged by what it runs. It is a
-  // builtin, so the published set still stands alone.
-  // node:url is here for the same reason: the live core re-imports a module by
-  // URL, and on Windows an absolute path is not a valid URL — pathToFileURL is
-  // the only correct way to build one. Builtin, so the set still stands alone.
+  // Builtins used by runtime and shipped maintenance scripts remain explicit.
   const allowedBare = new Set(['@deepseek-ai/dsh-tools', 'node:os', 'node:path', 'node:crypto', 'node:util', 'node:fs', 'node:url'])
   // The dev scripts are published so an installation can run the same judge; their
   // imports must therefore stay inside the builtins plus the package's own files.
   // The full builtin list is allowed here, unlike the runtime one above, because a
   // script that shells out is doing its job — nothing in lib/ may.
   const allowedScripts = new Set([...allowedBare, 'node:child_process', 'node:process', 'node:url', 'node:assert'])
-  const scriptFiles = ['scripts/verify-and-restart.mjs', 'scripts/restart-host.mjs', 'scripts/fingerprint.mjs', 'scripts/sync.mjs']
+  const scriptFiles = ['scripts/judge.mjs', 'scripts/fingerprint.mjs', 'scripts/sync.mjs']
   const scriptProblems = []
   for (const relative of scriptFiles) {
     const source = readFileSync(path.join(ROOT, relative), 'utf8')

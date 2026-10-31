@@ -2,6 +2,14 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.10.0] — 2026-10-31
+
+### Changed
+
+- 影子会话固定为 `danger-full-access`，不经过 auto-review 或任何交互审批；工具入口移除出网审批 hook，旧审批配置不再生效。
+- 重启裁判、worker 和续接队列已拆到独立的 `dsh-plugin-restart`；影子插件只保留委托入口，状态位于 `<DSH_HOME>/.restart/`。
+- 历史守卫 E2E 与自检说明明确标为旧版档案。
+
 ## [0.9.0] — 2026-10-30
 
 **改宿主半边不再需要人戳一下。** 0.8.0 解决了「改规则不必重启」，但改注册、工具、

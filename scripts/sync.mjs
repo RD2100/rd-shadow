@@ -12,7 +12,6 @@
  *   node scripts/sync.mjs --profile <profile directory>
  */
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync } from 'node:fs'
-import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -72,9 +71,8 @@ for (const relative of files) {
   // 硬链，不是拷贝）。这时 cpSync 报 ERR_FS_CP_EINVAL——不是错误，是「本来就是同一份」，
   // 跳过即可。realpathSync 看穿路径别名，statSync 看穿硬链，两个都要比。
   //
-  // 两个比较都要先确认部署副本里已经有这个文件：新增的模块（0.8.0 的 live-core.js
-  // 就是这么暴露的）在部署副本里还不存在，realpathSync 会直接 ENOENT，
-  // 而「不存在」当然意味着「不是同一份」，照常拷贝就是了。
+  // 两个比较都要先确认部署副本里已经有这个文件：新增模块在部署副本里还不存在，
+  // realpathSync 会直接 ENOENT，而「不存在」当然意味着「不是同一份」，照常拷贝就是了。
   if (existsSync(to)) {
     if (realpathSync(from) === realpathSync(to)) continue
     const fromStat = statSync(from)
@@ -112,15 +110,8 @@ if (verification.status !== 0) {
 
 const bytes = files.reduce((sum, relative) => sum + statSync(path.join(ROOT, relative)).size, 0)
 console.log(`sync: ${(bytes / 1024).toFixed(1)} KiB verified`)
-// What the host must log after the restart. Every earlier round answered "did
-// the new code load?" with a probe run and a decoded session log, which put an
-// operator in the loop; the fingerprint turns it into one grep. The hash covers
-// the files just copied, so it is the number this copy must produce.
+// The host build stamp identifies the exact runtime bytes after the required restart.
 const stamp = buildStamp()
 console.log(`sync: after restarting, the log must show "shadow: build ${stamp?.hash ?? '<unreadable>'}" and "shadow: directory <path>", and no "did not activate"`)
-// 只改了判断核的话，重启根本不必发生：守卫每 5 秒看一眼磁盘，字节变了就换，
-// 并在日志里自报换上了哪一份。这一行就是那条不用重启的路的判据。
-const coreHash = createHash('sha256').update(readFileSync(path.join(ROOT, 'lib', 'dispatch-core.js'))).digest('hex').slice(0, 12)
-console.log(`sync: if only lib/dispatch-core.js changed, the log must instead show "shadow: live core ${coreHash}" within seconds; \`npm run judge -- live\` checks that without a restart`)
-console.log('sync: HMR does not watch lib/*.js, so anything beyond the core still needs the restart')
+console.log('sync: HMR does not watch lib/*.js, so restart the host to load code changes')
 

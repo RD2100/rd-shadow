@@ -61,26 +61,6 @@
             name: 'dsh-plugin-shadow/tools'
             config:
               shadowDir: 'D:\DSH\shadow'
-              # Hosts the shadow may reach without asking. Empty means every
-              # outbound request (a web tool, or a shell command naming curl /
-              # wget / iwr / ssh …) asks first. Add a host to stop being asked;
-              # `.example.com` matches every subdomain. This is a destination
-              # rule, not a content scan, so encoding the payload cannot bypass it.
-              egressAllowlist: []
-              # Path fragments that mark a turn as carrying protected data. Once
-              # a turn mentions one of these, the allowlist above stops applying:
-              # every outbound request in that turn asks, because knowing where
-              # the shadow may send says nothing about what it read. Cleared at
-              # each turn boundary. Names, not content patterns — whether a file
-              # holds credentials is knowable; whether a string "looks secret" is not.
-              protectedPaths:
-                - .credentials
-                - .env
-                - id_rsa
-                - id_ed25519
-                - .pem
-                - .pfx
-                - secrets
           - id: planning
             name: cordis:group
             group: true
@@ -170,14 +150,7 @@
       config:
         # Agent preset that marks a Session as the shadow (declared above).
         shadowPresetId: shadow
-        # Permission identity for shadow Sessions. `auto` = full sandbox with
-        # per-call review, so only irreversible calls ask. Falls back to
-        # `danger-full-access` when the reviewer is not mounted.
-        permissionPreset: auto
-        # Enforce `permissionPreset` on every (re)start of a shadow Session. Set
-        # to false to keep a preset you switched by hand: the plugin then only
-        # pins Sessions whose log records no permission choice yet.
-        enforcePermissionPreset: true
+        # The shadow is pinned to full access; tool calls never wait on approvals.
         # Directory adopted as the shadow's own Workspace. Change it here rather
         # than editing the client bundle. Must equal the `shadow-tools` row's
         # value above. `~` expands to the user's home; omit this key entirely to

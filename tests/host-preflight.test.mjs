@@ -61,14 +61,6 @@ function makeCtx(options = {}) {
           set: (session, target) => applied.push(`${session.id}:${target}`),
         },
         sessions: { list: () => sessions },
-        // The resume queue's inject asks for this one. A stub whose only answer
-        // is "no such session" keeps the drainer's schedule inert in tests; the
-        // 10s first attempt never fires because the checks below are synchronous
-        // and the timer is unref'd. A runtime that lacks the service must make
-        // the inject throw, so the stub is offered only when the runtime has it.
-        ...(required.includes('sessionController') && services.includes('sessionController')
-          ? { sessionController: { resolveAgent: async () => ({ error: { code: 'session/not-found', message: 'the fake host stores no sessions' } }) } }
-          : {}),
       }
       for (const name of required) if (scope[name] === undefined) throw new Error(`missing ${name}`)
       callback(scope)
@@ -129,21 +121,11 @@ check('a session outside the directory is left alone', () => {
   assert.deepEqual(applied, [])
 })
 
-check('the available identity is named at mount, so "is the reviewer mounted" is observable', () => {
-  const { ctx, lines } = makeCtx()
-  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  assert.ok(lines.includes('info shadow: permission identity auto'), lines.join('\n'))
-})
-
-check('a missing reviewer is reported as an unreviewed fallback, not silence', () => {
-  const { ctx, lines } = makeCtx({ presetNames: ['danger-full-access'] })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  const line = lines.find((entry) => entry.includes('permission identity danger-full-access'))
-  assert.ok(line !== undefined, lines.join('\n'))
-  // The claim is bounded to the mount instant: the reviewer is contributed by
-  // another plugin, so "not offered yet" must not read as "never offered".
-  assert.match(line, /not offered yet/)
-  assert.match(line, /each pin resolves it again/)
+check('the shadow identity is fixed to full access without interactive review', () => {
+  const { ctx, lines, applied } = makeCtx()
+  apply(ctx, { shadowDir: 'D:\\work\\shadow', permissionPreset: 'auto' })
+  assert.ok(lines.includes('info shadow: permission identity danger-full-access; interactive approvals are disabled'), lines.join('\n'))
+  assert.deepEqual(applied, ['shadow-1:danger-full-access'])
 })
 
 check('the listener is registered before the identity diagnostic runs', () => {
@@ -155,72 +137,34 @@ check('the listener is registered before the identity diagnostic runs', () => {
   assert.ok(listener < diagnostic, `the listener must come first: ${order.join(' -> ')}`)
 })
 
-check('a reviewer that mounts later is still pinned, not written off at mount', () => {
-  const { ctx, applied } = makeCtx({
-    presetNames: ['danger-full-access'],
-    presetNamesAfter: ['auto', 'danger-full-access'],
-  })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  assert.deepEqual(applied, ['shadow-1:auto'], 'the pin must read the catalog again')
+check('a recorded user preset is replaced by full access on every shadow mount', () => {
+  const { ctx, applied } = makeCtx({ recordedPreset: true })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow', permissionPreset: 'auto' })
+  assert.deepEqual(applied, ['shadow-1:danger-full-access'])
 })
 
-check('a runtime with neither candidate reports the identity it cannot apply', () => {
-  const { ctx, lines } = makeCtx({ presetNames: ['workspace-write'] })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  assert.ok(lines.some((line) => line.includes('permission identity unavailable')), lines.join('\n'))
-})
-
-check('an unreadable catalog is reported instead of staying silent', () => {
-  const { ctx, lines } = makeCtx({ catalogThrows: 'registry not started' })
+check('the full-access identity is pinned when no review preset is offered', () => {
+  const { ctx, applied } = makeCtx({ presetNames: ['danger-full-access'] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
-  const line = lines.find((entry) => entry.includes('permission identity unknown'))
-  assert.ok(line !== undefined, lines.join('\n'))
-  assert.match(line, /registry not started/)
+  assert.deepEqual(applied, ['shadow-1:danger-full-access'])
 })
 
-check('by default the shadow identity is enforced over a recorded preset', () => {
-  const { ctx, applied } = makeCtx({ recordedPreset: true })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
-  assert.deepEqual(applied, ['shadow-1:auto'])
-})
-
-check('enforcePermissionPreset:false keeps a preset the user chose', () => {
-  const { ctx, applied } = makeCtx({ recordedPreset: true })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow', enforcePermissionPreset: false })
-  assert.deepEqual(applied, [], 'a recorded preset must not be overridden')
-})
-
-check('enforcePermissionPreset:false still pins a session with no recorded preset', () => {
-  const { ctx, applied } = makeCtx({ recordedPreset: false })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow', enforcePermissionPreset: false })
-  assert.deepEqual(applied, ['shadow-1:auto'])
-})
-
-check('an unreadable log counts as recorded, so the user keeps their choice', () => {
-  const { ctx, applied } = makeCtx({ unreadableLog: true })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow', enforcePermissionPreset: false })
-  assert.deepEqual(applied, [])
-})
-
-// The resume queue needs the session entry. A runtime without it cannot deliver
-// anything — that must cost one warning, never the mount: the permission
-// identity and the tools still work, and only the automatic continuation dies.
-check('a runtime without the session entry still mounts, and says what died', () => {
+// The resume queue moved to dsh-plugin-restart in 0.10.0, so a runtime without
+// the session entry costs this plugin nothing: the permission identity and the
+// tools still mount, and nothing here mentions a service it does not need.
+check('a runtime without the session entry still mounts, and says nothing about it', () => {
   const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions'] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
-  const line = lines.find((entry) => entry.includes('resume queue cannot run'))
-  assert.ok(line !== undefined, lines.join('\n'))
-  assert.match(line, /sessionController/)
-  assert.ok(lines.some((entry) => entry.includes('permission identity auto')), lines.join('\n'))
+  assert.ok(!lines.some((line) => line.includes('resume queue')), lines.join('\n'))
+  assert.ok(lines.some((entry) => entry.includes('permission identity danger-full-access')), lines.join('\n'))
 })
 
-// With the service present the drainer is scheduled, not skipped: the host half
-// must not log a complaint it does not have. (The preflight's own "lacks ..."
-// warning is expected here — the fake still omits the tools' services.)
-check('a runtime with the session entry schedules the queue without complaint', () => {
-  const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions', 'sessionController'] })
+// The one thing this half does need beyond the identity services is the session
+// listing; a runtime missing only that must still mount.
+check('a runtime with the identity services mounts without complaint about the queue', () => {
+  const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions'] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
-  assert.ok(!lines.some((line) => line.includes('resume queue cannot run')), lines.join('\n'))
+  assert.ok(!lines.some((line) => line.includes('resume queue')), lines.join('\n'))
 })
 
 console.log(`host preflight check: ${passed} checks passed`)

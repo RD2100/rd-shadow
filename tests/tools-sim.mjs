@@ -20,6 +20,7 @@ const toolsModule = await import(TOOLS_URL)
 console.log(`tools entry: ${TOOLS_URL}`)
 
 let passed = 0
+let skippedLegacyApprovalChecks = 0
 async function check(name, fn) {
   try {
     await fn()
@@ -273,7 +274,10 @@ function mount(world, options = {}) {
       callback(scope)
     },
   }
-  toolsModule.apply(ctx, { shadowDir: SHADOW_DIR, ...options.config })
+  toolsModule.apply(ctx, {
+    shadowDir: SHADOW_DIR,
+    ...options.config,
+  })
   const tools = new Map(registered.map((definition) => [definition.name, definition]))
   // Keep the historical Map shape for call sites, with the wiring attached.
   tools.guards = guards
@@ -323,11 +327,37 @@ function scenario(options = {}) {
 /* Registration                                                        */
 /* ------------------------------------------------------------------ */
 
-await check('registers both tools with valid authored schemas', async () => {
-  const { tools } = scenario()
+await check('shadow tools ignore legacy approval config and dispatch without waiting', async () => {
+  const world = makeWorld()
+  const shadow = world.addSession('shadow-1', SHADOW_DIR)
+  const target = world.addSession('target-1', 'D:\\work\\proj')
+  world.addWorkspace('w1', ['target-1'])
+  const tools = mount(world, {
+    config: {
+      unconditionalAllow: false,
+      egressAllowlist: [],
+      protectedPaths: ['.env'],
+      canaryValues: ['secret'],
+    },
+    approval: 'rejected',
+  })
+  const caller = world.goLive('shadow-1')
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'run the requested task' }
+  shadow.append('tool/call', { turn: 1, step: 0, callId: 'call-approval-free', name: 'shadow_dispatch', arguments: JSON.stringify(args) })
+  const receipt = await tools.get('shadow_dispatch').execute(args, {
+    agent: caller,
+    callId: 'call-approval-free',
+    arguments: args,
+    signal: new AbortController().signal,
+  })
+
   assert.deepEqual([...tools.keys()].sort(), ['shadow_dispatch', 'shadow_inspect', 'shadow_targets'])
   assert.equal(toolsModule.name, 'dsh-plugin-shadow/tools')
   assert.deepEqual(toolsModule.inject, ['tools'])
+  assert.equal(tools.guards.length, 0)
+  assert.equal(tools.asked.length, 0)
+  assert.match(receipt, /^shadow_dispatch -> accepted/)
+  assert.equal(target.events.filter((event) => event.type === 'agent/inbox/spliced').length, 1)
 })
 
 /* ------------------------------------------------------------------ */
@@ -705,8 +735,13 @@ await check('catalog refuses a non-shadow caller', async () => {
 })
 
 /* ------------------------------------------------------------------ */
-/* Egress guard                                                        */
+/* Historical egress-guard scenarios (not run; pure core is tested separately) */
 /* ------------------------------------------------------------------ */
+
+// The tool entry no longer installs this hook. Keep the scenarios as a readable
+// archive while classifier behavior remains covered by dispatch-core unit tests.
+{
+  const check = async () => { skippedLegacyApprovalChecks += 1 }
 
 await check('an unlisted destination asks before the call runs', async () => {
   const world = makeWorld()
@@ -1154,5 +1189,6 @@ await check('a script is resolved from the manifest it lives in', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+}
 
-console.log(`tools integration sim: ${passed} scenarios passed`)
+console.log(`tools integration sim: ${passed} scenarios passed; skipped ${skippedLegacyApprovalChecks} archived approval-hook scenarios`)
