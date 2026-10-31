@@ -2,12 +2,25 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.11.0] — 2026-10-31
+
+### Fixed
+
+- bundle patch 使用 DSH 的 `!!js` 表达式在当前机器解析 home 目录，让 host 与 browser 插件行共享相同的绝对 `dsh-shadow` 路径。
+- `node scripts/pack-check.mjs` 现在校验真实 `npm pack` 文件清单，并把产物安装到临时目录后运行部署导入与工具仿真。
+
+### Changed
+
+- npm 发布包不包含 checkout-only 的 `scripts/judge.mjs`，也不暴露 `npm run judge`；restart 校验由独立 `dsh-plugin-restart` 仓库运行。
+- **Breaking migration:** 默认影子目录改为 `<home>/dsh-shadow`。升级前需在 host 与 `shadow-tools` 行显式设置相同的旧绝对 `shadowDir`，否则已有 Sessions/workspace 不会被新身份识别。
+- README 改为当前 `0.11.0`，并更新 npm、Git 与 profile 安装说明。
+
 ## [0.10.0] — 2026-10-31
 
 ### Changed
 
 - 影子会话固定为 `danger-full-access`，不经过 auto-review 或任何交互审批；工具入口移除出网审批 hook，旧审批配置不再生效。
-- 重启裁判、worker 和续接队列已拆到独立的 `dsh-plugin-restart`；影子插件只保留委托入口，状态位于 `<DSH_HOME>/.restart/`。
+- 重启裁判、worker 和续接队列由独立的 `dsh-plugin-restart` 所有；影子仓库保留 checkout 本地的重启委托入口，重启状态位于 `<DSH_HOME>/.restart/`。
 - 历史守卫 E2E 与自检说明明确标为旧版档案。
 
 ## [0.9.0] — 2026-10-30

@@ -101,9 +101,9 @@ f8b75c42 的核验指出 `dispatch-already-linked`（全表扫描同 (sessionId,
 
 **没有任何可逆性分级代码。** 旧实现靠「Full access + never」让影子全速运行；新设计否定了 `never`（会在应答者链之前拒绝一切，包括正常调遣）。
 
-### 5.2 新设计的机制（已在本部署生效）
+### 5.2 旧版移植设计的机制（历史记录，已被 0.10.0 替换）
 
-证据链（全部实测）：
+以下证据描述 0.10.0 之前的 `auto` + auto-review 方案，不是当前部署的机制：
 1. `D:\DSH\.DSH\profiles\desktop\package.json:11` 的 bundles 含 `@deepseek-ai/dsh-experimental-auto-review`。
 2. 该插件 effect 内调 `permissionPresets.registerAuto(...)`——**`auto` 预设名仅在其挂载时存在**（asar 内 `dsh-experimental-auto-review/lib/index.js`）。
 3. 宿主日志 `shadow: <sessionId> permission -> auto`——本插件 host 半边按 `names.includes('auto')` 选择并落盘，证明评审在位。
@@ -206,7 +206,7 @@ work-data 全域（schema/records/store/projections）、memory、subscriptions/
 
 1. ~~用户就 §9 五问给出决策~~ → **已完成（2026-10-27 全部锁定，见 §9）。**
 2. 写 M3 实现规格（工具面 + 状态机 + 回执 + 测试清单）：测试规格沿用 bd61ea96 报告的 38 条中与调遣/选择相关的部分，按「独立插件 + 官方 runtime」重写组装；两个旧 integration e2e 的断言机制（完整持久化日志比对 + expected pin）可直接沿用，快照需在新插件名下重录。
-3. M4 端到端验证：让影子尝试一次不可逆操作，确认审批出现且 body 未执行（需桌面端配合）。
+3. ~~M4 旧版端到端审批验证~~ → **不适用于 0.10.0**：当前已移除审批 hook 并固定使用 `danger-full-access`。旧的删除/外发探针不会触发本插件审批，不得按此待办执行；如需恢复该安全目标，先另立方案并获用户确认。
 
 ---
 

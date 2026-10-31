@@ -19,8 +19,8 @@ const PATCH = path.join(ROOT, 'cordis.patch.yml')
 /** The package name the patch rows must reference; a rename has to reach both files. */
 const PACKAGE_NAME = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name
 
-/** The directory the shipped patch pins; deployments may override it. */
-const PATCH_SHADOW_DIR = 'D:\\DSH\\shadow'
+/** Home-relative default evaluated by DSH's bundle loader on each machine. */
+const PATCH_SHADOW_DIR = "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')"
 
 /** Resolve the YAML parser from a module name or a filesystem path. */
 function yamlSpecifier() {
@@ -100,8 +100,9 @@ check('the dispatch tools row is rooted at the package name', () => {
   if (row.name !== expected) {
     throw new Error(`tools row must be "${expected}" (package.json name + /tools), found "${String(row.name)}" — a package rename has to reach this row`)
   }
-  if (row.config?.shadowDir !== PATCH_SHADOW_DIR) {
-    throw new Error(`tools shadowDir must be ${PATCH_SHADOW_DIR}, got ${String(row.config?.shadowDir)}`)
+  const shadowDirExpr = row.config?.shadowDir?.__js
+  if (typeof shadowDirExpr !== 'string' || shadowDirExpr !== PATCH_SHADOW_DIR) {
+    throw new Error(`tools shadowDir must resolve the portable home path, got ${String(shadowDirExpr)}`)
   }
   if (row.config?.unconditionalAllow !== undefined) throw new Error('shadow tools must not expose a switch that re-enables approvals')
 })
@@ -112,7 +113,10 @@ check('the host row keeps its directory and permission identity', () => {
   if (host.name !== PACKAGE_NAME) {
     throw new Error(`host row must be "${PACKAGE_NAME}" (package.json name), found "${String(host.name)}" — a package rename has to reach this row`)
   }
-  if (host.config?.shadowDir !== PATCH_SHADOW_DIR) throw new Error(`host shadowDir must be ${PATCH_SHADOW_DIR}`)
+  const shadowDirExpr = host.config?.shadowDir?.__js
+  if (typeof shadowDirExpr !== 'string' || shadowDirExpr !== PATCH_SHADOW_DIR) {
+    throw new Error('host shadowDir must resolve the portable home path')
+  }
   if (host.config?.permissionPreset !== undefined) throw new Error('host permissionPreset must not override fixed full-access identity')
   if (host.config?.shadowPresetId !== 'shadow') throw new Error('host shadowPresetId must stay "shadow"')
 })
@@ -120,7 +124,10 @@ check('the host row keeps its directory and permission identity', () => {
 check('both rows name the same directory', () => {
   const tools = plugins.find((plugin) => plugin.id === 'shadow-tools')
   const host = byId.get('shadow')
-  if (tools?.config?.shadowDir !== host?.config?.shadowDir) throw new Error('shadowDir drifted between rows')
+  if (tools?.config?.shadowDir?.__js !== host?.config?.shadowDir?.__js) throw new Error('shadowDir drifted between rows')
+  const resolved = new Function('process', `return ${host.config.shadowDir.__js}`)(process)
+  const expected = process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
+  if (resolved !== expected) throw new Error(`shadowDir expression resolved to ${resolved}, expected ${expected}`)
 })
 
 check('the win32 tool selection is still expressed as !!js', () => {

@@ -55,12 +55,12 @@
           # package, so they exist only inside a shadow Session's agent scope
           # (DISPATCH-SPEC.md §1). shadowDir must match the host row's value
           # below: the tools refuse a caller outside that directory.
-          # A leading `~` means the user's home directory; the host expands it,
-          # so this line can ship unchanged to machines with other home paths.
+          # DSH evaluates this expression on the current machine so the same
+          # absolute home-based directory reaches the host and browser halves.
           - id: shadow-tools
             name: 'dsh-plugin-shadow/tools'
             config:
-              shadowDir: 'D:\DSH\shadow'
+              shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
           - id: planning
             name: cordis:group
             group: true
@@ -153,7 +153,6 @@
         # The shadow is pinned to full access; tool calls never wait on approvals.
         # Directory adopted as the shadow's own Workspace. Change it here rather
         # than editing the client bundle. Must equal the `shadow-tools` row's
-        # value above. `~` expands to the user's home; omit this key entirely to
-        # use the default `<home>/dsh-shadow` (host rows only — the browser half
-        # requires an explicit value and reports a missing one).
-        shadowDir: 'D:\DSH\shadow'
+        # value above. The expression resolves to `<home>/dsh-shadow` on this
+        # machine and is shared with the browser half.
+        shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')

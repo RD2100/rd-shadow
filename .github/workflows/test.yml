@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      # No lockfile is committed: this package has a single devDependency, so a
-      # plain install is both reproducible enough and free of platform noise.
+      # Install the parser used by the bundle-patch checks; the plugin itself has
+      # no npm runtime dependencies because DSH provides its host API.
       - run: npm install --no-audit --no-fund
-      - run: npm test
+      - run: node tests/run.mjs

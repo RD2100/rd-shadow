@@ -2,7 +2,7 @@
 
 > When you have more DSH conversations than you can track, let one of them stand in your seat: watching progress and handing work to the right Session.
 
-**Repository**: [RD2100/rd-shadow](https://github.com/RD2100/rd-shadow) — **Package**: `dsh-plugin-shadow` (the repository and the package are named differently; install by package name)
+**Repository**: [RD2100/rd-shadow](https://github.com/RD2100/rd-shadow) — **Package**: `dsh-plugin-shadow` (the repository and package have different names; install by the package name after npm publication, or by Git/local path before then)
 
 *[中文说明](README.md)*
 
@@ -25,7 +25,7 @@ It does not reimplement the old workbench's ledger, memory, or subscription pool
 | Interactive approval prompts | Disabled; shadow tools do not register an approval hook |
 | `shadow_targets` / `shadow_inspect` / `shadow_dispatch` | ✅ verified (including a real delivery and result read-back) |
 
-Version `0.10.0` provides shadow Session coordination and dispatch. Shadow permissions are fixed to `danger-full-access`, and tool calls do not wait for human approval.
+Version `0.11.0` provides shadow Session coordination and dispatch. Shadow permissions are fixed to `danger-full-access`, and tool calls do not wait for human approval. **Breaking migration:** the default shadow directory changes to `dsh-shadow` under the current OS home. Before upgrading, set `shadowDir` explicitly to the existing path on both the host and `shadow-tools` rows to keep existing Sessions.
 
 ---
 
@@ -33,7 +33,7 @@ Version `0.10.0` provides shadow Session coordination and dispatch. Shadow permi
 
 | Item | Requirement |
 |---|---|
-| DSH | `dsh-desktop-next 2.0.20-next` (harness `0.2.1-rc.3`). This plugin depends on that build's internal services and tool-registration contract and is **not guaranteed across versions** |
+| DSH | `dsh-desktop-next 2.0.20-next` (harness `0.2.1-rc.3`). This plugin depends on that build's internal services and tool-registration contract; DSH provides `@deepseek-ai/dsh-tools`, so it is not an npm runtime dependency. Cross-version compatibility is **not guaranteed** |
 | Node | `>= 22.19` |
 | Reviewer plugin | Not required; the shadow does not use auto-review and runs as `danger-full-access` |
 | Profile | A GUI-capable web or desktop profile (this plugin has a browser half) |
@@ -47,15 +47,19 @@ Version `0.10.0` provides shadow Session coordination and dispatch. Shadow permi
 The desktop profile **cannot** be managed by the `dsh plugin` CLI (DSH reserves it for the Electron application). Use the in-app plugin manager, or have an agent call `plugin_manager`'s `install_bundle`:
 
 ```
-install_bundle  spec = https://github.com/RD2100/rd-shadow
+install_bundle  spec = D:/path/to/shadow-plugin
 ```
 
-The manager also accepts npm package names, tarball URLs, and absolute local paths.
+Install a source working tree by absolute local path or tarball. Install from GitHub only after the target revision is committed and pushed; install by package name after npm publication.
 
 ### web / tui profile
 
+Install a source working tree by local path. Use the Git URL after the target revision is committed and pushed, or the package name after npm publication:
+
 ```sh
-dsh plugin --profile web add <npm name | git url | absolute path>
+dsh plugin --profile web add D:/path/to/shadow-plugin
+# After GitHub main is updated: dsh plugin --profile web add https://github.com/RD2100/rd-shadow
+# After npm publication: dsh plugin --profile web add dsh-plugin-shadow
 ```
 
 ### Manual (any profile)
@@ -66,6 +70,8 @@ Both halves are needed in the profile's `package.json`:
 {
   "dsh": { "profile": { "bundles": ["dsh-plugin-shadow"] } },
   "dependencies": { "dsh-plugin-shadow": "file:D:/path/to/shadow-plugin" }
+  // After GitHub main is updated, use: "dsh-plugin-shadow": "git+https://github.com/RD2100/rd-shadow.git"
+  // After npm publication, use: "dsh-plugin-shadow": "^0.11.0"
 }
 ```
 
@@ -86,12 +92,12 @@ The relevant rows in `cordis.patch.yml` are:
           - id: shadow-tools
             name: 'dsh-plugin-shadow/tools'
             config:
-              shadowDir: '~/dsh-shadow'  # must match the host row
+              shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')  # must match the host row
     - id: shadow
       name: 'dsh-plugin-shadow'
       config:
         shadowPresetId: shadow        # the agent preset that marks a Session as the shadow
-        shadowDir: '~/dsh-shadow'     # the shadow's own directory ('~' expands to your home)
+        shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')  # the shadow's own directory
 ```
 
 - `shadowDir` **is** the shadow's identity: only Sessions living there get pinned to `danger-full-access` and treated as the shadow.
@@ -264,24 +270,24 @@ Its boundary, stated plainly: **a canary only sees the value when it is written 
 |---|---|
 | **No interactive approval prompts** | The shadow has `danger-full-access`; tool calls are not stopped for human approval |
 | GUI profiles only | The client half needs a browser environment |
-| Windows-oriented defaults | The default is cross-platform, but a hard-coded Windows `shadowDir` needs editing when you switch platforms |
+| `0.11.0` breaking migration | The default directory changes; set the same existing absolute `shadowDir` on both host and `shadow-tools` rows before upgrading to preserve Sessions |
 | No cross-version compatibility work | See [Requirements](#requirements) |
 
 ---
 
 ## Development and testing
 
+These commands apply only to a source checkout. The npm tarball omits tests and maintenance scripts and defines no scripts that refer to checkout-only files.
+
 ```sh
-npm test                        # all offline checks (core + preflight + sim + patch + package self-sufficiency)
-npm run pack:check              # published artifact only: files coverage, entry points, runs from a copy
-node tests/run.mjs --deployed   # additionally verify the installed copy (needs SHADOW_PROFILE_TOOLS)
-npm run sync -- --profile <profile dir>   # copy into the profile and verify in one step
-npm run fingerprint             # print this checkout's code hash, compare it with the host log's build line
-npm run judge                   # delegate restart and verify to dsh-plugin-restart
+node tests/run.mjs
+node scripts/pack-check.mjs
+node tests/run.mjs --deployed   # needs SHADOW_PROFILE_TOOLS pointing at installed lib/tools.js
+node scripts/sync.mjs --profile <profile directory>
+node scripts/fingerprint.mjs
 ```
 
-Shortest loop after changing `lib/*.js`: `npm test` → sync and verify the desktop profile → commit both plugin repositories → run `npm run judge` from `restart-plugin` as the final action.
-`npm run judge` delegates restart, ledger, and resume-queue ownership to the separate `dsh-plugin-restart` checkout. Its ledger and queue state live under `<DSH_HOME>/.restart/`. Commit both repositories before the final judge run.
+Deployment loop: test and sync, then commit the shadow repository. For a restart check, run `node scripts/verify-and-restart.mjs --repo <shadow-plugin checkout>` from the separate `restart-plugin` checkout. A real judge can interrupt other tasks, so run it only as the final action of a turn. It accepts only a deployed copy byte-for-byte matching a commit and checks the host's `shadow: build <hash>` line; its ledger and resume queue live under `<DSH_HOME>/.restart/`.
 
 | Suite | Covers |
 |---|---|
@@ -293,7 +299,7 @@ Shortest loop after changing `lib/*.js`: `npm test` → sync and verify the desk
 | `tests/patch.check.mjs` | Parses `cordis.patch.yml` (including `!!js`) and asserts the shadow rows are intact; needs `js-yaml` (installed via `npm install`, or point `JS_YAML` at it) |
 | `tests/build-stamp.test.mjs` | The shadow build stamp's contract: the hash follows the bytes, and unreadable files report null instead of breaking the mount |
 | Restart validation | Judge, worker, ledger, and resume-queue checks live in the separate `dsh-plugin-restart` repository |
-| `scripts/pack-check.mjs` | The published artifact: every `lib/*.js` included, entry points exist, runtime imports stay inside the shipped set, a copy of only those files still passes the tools suite |
+| `scripts/pack-check.mjs` | Checks the exact `npm pack` inventory, installs the tarball in a temporary directory, then smoke-tests installed runtime imports, tools simulation, and the client bundle |
 
 The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-schema validation — a tool definition that would throw at the real registration site throws here too.
 
@@ -319,12 +325,12 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
   shadow: permission identity danger-full-access; interactive approvals are disabled
   ```
 
-  The middle line is the **build stamp**: the host reporting the content hash of the `lib/*.js` it loaded. Compare it with `npm run fingerprint` after a restart — equal means the new code really is in place. It is harder evidence than file timestamps, because a copy edited afterwards, displaced by another copy, or half-synced all change the hash. If you would rather not run a probe at all, this line is the whole answer to "did my change take effect?".
+  The middle line is the **build stamp**: the host reporting the content hash of the `lib/*.js` it loaded. Compare it with `node scripts/fingerprint.mjs` after a restart — equal means the new code really is in place. It is harder evidence than file timestamps, because a copy edited afterwards, displaced by another copy, or half-synced all change the hash. If you would rather not run a probe at all, this line is the whole answer to "did my change take effect?".
 
-- So a sync must end with a deployed check. `npm run sync` does the whole thing (enumerates `lib/*.js` from disk, copies, then runs `--deployed`, so a half-finished copy fails immediately):
+- End a sync with a deployed check. The checkout-only sync command enumerates `lib/*.js`, copies them, and runs `--deployed`, so a half-finished copy fails immediately:
 
   ```sh
-  npm run sync -- --profile <your profile directory>
+  node scripts/sync.mjs --profile <your profile directory>
   ```
 
   Manual equivalent:
@@ -336,7 +342,7 @@ The simulator uses `tests/dsh-tools-stub.mjs` to reproduce the official author-s
 
 ### Restart and resume
 
-The independent `dsh-plugin-restart` repository owns the restart judge, worker, ledger, and resume queue. It verifies deployed bytes against a commit and stores state under `<DSH_HOME>/.restart/`. Its worker waits for quiet host logs before restarting, but other tasks may still be interrupted; run the real `npm run judge` only as the final action of a conversation. See the restart repository's README for the full workflow.
+The independent `dsh-plugin-restart` repository owns the restart judge, worker, ledger, and resume queue. It verifies deployed bytes against a commit and stores state under `<DSH_HOME>/.restart/`. Its worker waits for quiet host logs before restarting, but other tasks may still be interrupted; run the real judge only as the final action of a turn. See the restart repository's README for the full workflow.
 
 The shadow plugin no longer includes the guard's live-reload path. `dispatch-core.js` retains pure classifier unit coverage, but does not affect tool execution.
 
@@ -350,7 +356,7 @@ lib/shadow-dir.js    the single owner of the shadow-directory rule
 lib/build-stamp.js   build stamp reported at mount
 lib/client.js        browser half: sidebar entry and panel
 cordis.patch.yml     preset + three plugin rows
-scripts/             sync and fingerprint commands; `judge.mjs` delegates to dsh-plugin-restart
+scripts/             checkout-only sync, fingerprint, and package checks
 tests/               offline verification assets
 DESIGN.md            design (historical permission details noted at the top) — Chinese
 DISPATCH-SPEC.md     implementation spec (historical permission details noted at the top) — Chinese
@@ -362,30 +368,24 @@ DISPATCH-SPEC.md     implementation spec (historical permission details noted at
 
 - [x] `repository` / `homepage` / `bugs` point at [RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)
 - [ ] Screenshots in the README
-- [ ] Decide whether to publish to npm (otherwise installs come from git or a local path)
+- [x] npm public package selected; publishing still requires maintainer credentials
 - [x] English README
-- [x] CI running at least `npm test` (`.github/workflows/test.yml`, ubuntu/windows × node 22/24)
+- [x] CI runs `node tests/run.mjs` (`.github/workflows/test.yml`, ubuntu/windows × Node 22/24)
 - [ ] Translate the design docs (currently Chinese only)
 - [x] Historical egress-guard verification archived in [E2E-GUARD.md](E2E-GUARD.md); it is not a guide to current runtime behavior
 
 ### Publishing to npm
 
-Pre-flight (checked 2026-10-29): the name `dsh-plugin-shadow` is free on npm; `npm pack --dry-run`
-produces 16 files / 135 kB tarball (`lib` + patch + LICENSE + every doc); `npm run pack:check` passes;
-CI is green; the `v0.5.0` tag is pushed.
+Before publishing, from the source checkout:
 
 ```sh
-npm whoami                 # ENEEDAUTH when not logged in — publishing needs maintainer credentials
-npm run pack:check         # artifact self-sufficiency: files coverage, entry points, runs from a copy
+node tests/run.mjs
+node scripts/pack-check.mjs
+npm whoami                 # publishing requires maintainer credentials
 npm publish --access public
 ```
 
-After publishing: `npm view dsh-plugin-shadow version` returns `0.5.0`, and a fresh
-`npm install dsh-plugin-shadow` elsewhere can load `lib/tools.js`.
-
-Installing (also works before publishing): `npm install git+https://github.com/RD2100/rd-shadow.git`,
-or put the repository path straight into the profile's bundles. For local development use
-`npm run sync -- --profile <profile dir>`.
+`pack-check` validates the actual tarball inventory, installs it in a temporary directory, and smoke-tests the installed runtime and browser bundle. A successful local check is not a publication; maintainers must verify package-name availability and publishing access before release. Install an uncommitted working tree by local path, or install a target revision from `https://github.com/RD2100/rd-shadow` after it is committed and pushed.
 
 ---
 

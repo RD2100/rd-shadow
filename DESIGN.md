@@ -137,8 +137,8 @@
 | M1 | 插件骨架 + 侧栏入口 + 候选列表 + 选择 + 持久化 | 装进 profile 后，侧栏出现入口，能列出候选，选中后重启仍记得 | 已交付（侧栏入口/候选/打开新建归档；选择持久化委托给官方导航状态） |
 | M2 | 权限身份装配：`danger-full-access`，不等待交互审批 | 会话日志显示影子目录会话固定为完整权限；工具调用无审批 hook | 已实现并由 host-preflight 与工具仿真覆盖 |
 | M3 | 调遣：基于官方会话与子代理接口，含幂等与回执语义 | 能向目标会话投递一条消息；重复投递被拒；结果可核对 | **已完成**：三个工具的 execute 全部实证；影子自主 target→inspect→dispatch 投递成功（目标 seq 4742 spliced → 4746 user/message），随后用 `shadow_inspect afterSeq` 读到目标 seq 5023 的回复正文。重复投递由离线仿真锁定 |
-| M4 | 不可逆拦截：删除已存在对象、生产访问 | **授权缺失**的不可逆动作被拒绝并转人工确认；授权明确的直接执行（官方语义，§3.4） | **部分验证，已测到该架构的边界**：low 静默放行、medium-已授权放行（含一次假凭据外发，55.6 s 评审后放行）均实测；`medium-未授权 → deny → 弹窗` 与 `high → 硬拒` **无法用安全探针验证**——安全的数据必然"不敏感"（判为 medium），用真实凭据不可接受。若要确定性，只能改用插件内模式守卫（[DISPATCH-SPEC.md](DISPATCH-SPEC.md) §11.11）<br>**2026-10-28 补**：不可逆分级仍未自建，但外发**目的地**已按 §11.11 选项 B 落地为模式守卫（§11.12），并用端到端验证过 |
+| M4 | 不可逆拦截：删除已存在对象、生产访问 | 旧 `auto` + auto-review 设计：授权缺失时转人工确认，授权明确时按官方语义执行 | **旧设计，当前不适用**：0.10.0 将影子固定为 `danger-full-access` 并移除审批 hook，因此当前工具调用不会由本插件拦截或弹审批。旧版 low/medium 行为的历史实测见 [DISPATCH-SPEC.md](DISPATCH-SPEC.md) §11.9–§11.12；不得在当前版本用删除或真实凭据外发复测。若未来重新引入审批机制，须先由用户确认安全模型并另立验收。 |
 
-仓库：[RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)。CI（`.github/workflows/test.yml`）在 ubuntu/windows × node 22/24 上跑 `npm test`。
+仓库：[RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)。CI（`.github/workflows/test.yml`）在 ubuntu/windows × Node 22/24 上运行 `node tests/run.mjs`。
 
 M1 是链路验证，必须最先完成。它同时验证打包、安装、加载、渲染、持久化五个环节；任何一个不通，后面的工作都没有意义。

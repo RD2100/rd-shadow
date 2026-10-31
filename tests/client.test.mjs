@@ -14,7 +14,7 @@ import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-const SOURCE = fs.readFileSync(path.join(ROOT, 'lib', 'client.js'), 'utf8')
+const SOURCE = fs.readFileSync(process.env.SHADOW_CLIENT ?? path.join(ROOT, 'lib', 'client.js'), 'utf8')
 
 let passed = 0
 function check(name, fn) {

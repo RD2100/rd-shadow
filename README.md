@@ -2,7 +2,7 @@
 
 > 你自己的 DSH 会话管理不过来时，让一个会话站在你的视角上，替你盯着进度、把活派给正确的会话。
 
-**仓库**：[RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)　**包名**：`dsh-plugin-shadow`（仓库名与包名不同，安装时用包名）
+**仓库**：[RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)　**包名**：`dsh-plugin-shadow`（仓库名与包名不同；npm 发布后按包名安装，之前用 Git 或本机路径）
 
 *[English](README.en.md)*
 
@@ -25,7 +25,7 @@
 | 影子工具调用人工审批 | 已关闭：无条件放行 |
 | `shadow_targets` / `shadow_inspect` / `shadow_dispatch` | ✅ 已验证（含真实投递与结果核对） |
 
-版本 `0.10.0` 提供影子会话协调与派发。影子权限固定为 `danger-full-access`，工具调用不等待人工审批。
+版本 `0.11.0` 提供影子会话协调与派发。影子权限固定为 `danger-full-access`，工具调用不等待人工审批。**破坏性迁移**：默认影子目录改为当前系统 home 下的 `dsh-shadow`；升级前如需保留既有会话，必须在 profile 中将 host 与 `shadow-tools` 两行的 `shadowDir` 都显式设为原目录。
 
 ---
 
@@ -33,7 +33,7 @@
 
 | 项 | 要求 |
 |---|---|
-| DSH | `dsh-desktop-next 2.0.20-next`（harness 包 `0.2.1-rc.3`）。本插件直接依赖该版本的内部服务与工具注册契约，**不保证跨版本可用** |
+| DSH | `dsh-desktop-next 2.0.20-next`（harness 包 `0.2.1-rc.3`）。本插件直接依赖该版本的内部服务与工具注册契约；`@deepseek-ai/dsh-tools` 由 DSH 提供，不是 npm 运行时依赖；**不保证跨版本可用** |
 | Node | `>= 22.19` |
 | 评审插件 | 不需要。影子工具不等待官方评审，权限固定为 `danger-full-access`；请先阅读[权限与安全](#权限与安全) |
 | profile | 带 GUI 的 web / desktop profile（本插件有浏览器半边） |
@@ -47,15 +47,19 @@
 桌面版 profile **不能**用 `dsh plugin` 命令行管理（DSH 明确保留给 Electron 应用）。用应用内的插件管理（设置里的插件页），或让一个 agent 调 `plugin_manager` 的 `install_bundle`：
 
 ```
-install_bundle  spec = https://github.com/<你的账号>/dsh-plugin-shadow
+install_bundle  spec = D:/path/to/shadow-plugin
 ```
 
-（或本机的绝对路径、tarball URL、npm 包名——管理器都接受。）
+源码工作树可用本机绝对路径或 tarball；GitHub 安装需先提交并推送目标版本，npm 包名安装需先完成 npm 发布。
 
 ### web / tui profile
 
+源码工作树可用本机路径；目标版本提交并推送后可用 GitHub 地址，npm 发布后可用包名：
+
 ```sh
-dsh plugin --profile web add <npm 包名 | git 地址 | 绝对路径>
+dsh plugin --profile web add D:/path/to/shadow-plugin
+# GitHub main 更新后：dsh plugin --profile web add https://github.com/RD2100/rd-shadow
+# npm 发布后：dsh plugin --profile web add dsh-plugin-shadow
 ```
 
 ### 手动（任何 profile）
@@ -66,6 +70,8 @@ dsh plugin --profile web add <npm 包名 | git 地址 | 绝对路径>
 {
   "dsh": { "profile": { "bundles": ["dsh-plugin-shadow"] } },
   "dependencies": { "dsh-plugin-shadow": "file:D:/path/to/shadow-plugin" }
+  // GitHub main 更新后可改为: "dsh-plugin-shadow": "git+https://github.com/RD2100/rd-shadow.git"
+  // npm 发布后可改为: "dsh-plugin-shadow": "^0.11.0"
 }
 ```
 
@@ -81,12 +87,12 @@ dsh plugin --profile web add <npm 包名 | git 地址 | 绝对路径>
 - id: shadow-tools
   name: 'dsh-plugin-shadow/tools'
   config:
-    shadowDir: '~/dsh-shadow'
+    shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
 - id: shadow
   name: 'dsh-plugin-shadow'
   config:
     shadowPresetId: shadow
-    shadowDir: '~/dsh-shadow'
+    shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
 ```
 
 - `shadowDir` 是**影子的身份**：住在这里的会话才算影子，才被固定为 `danger-full-access` 并获得三个工具。
@@ -220,24 +226,24 @@ flowchart LR
 |---|---|
 | **没有交互式审批** | 影子固定为 `danger-full-access`；工具调用不等待人工授权 |
 | 只支持带 GUI 的 profile | client 半边需要浏览器环境 |
-| Windows 路径 | 默认值跨平台，但 `shadowDir` 若写死 Windows 绝对路径，换平台需改配置 |
+| `0.11.0` 破坏性迁移 | 默认目录改变；升级前如需保留现有会话，需在 host 与 `shadow-tools` 两行显式配置相同的旧 `shadowDir` |
 | 未做跨 DSH 版本兼容 | 见[要求](#要求) |
 
 ---
 
 ## 开发与测试
 
+这些命令只在源码 checkout 中可用；npm tarball 刻意不包含测试和维护脚本，也不声明会指向 checkout 文件的 npm scripts。
+
 ```sh
-npm test                        # 全部离线检查（纯核 + 预检 + 仿真 + patch + 发布产物自足性）
-npm run pack:check              # 只验发布产物：files 覆盖、入口存在、只复制这些也能跑
-node tests/run.mjs --deployed   # 额外对已安装副本再跑一遍（需 SHADOW_PROFILE_TOOLS）
-npm run sync -- --profile <profile 目录>   # 把源码同步进 profile 并自动验证
-npm run fingerprint             # 打印本仓库运行代码的内容哈希，与宿主日志里的 build 行比对
-npm run judge                   # 委托 restart-plugin：判定 → 重启 → 核对
+node tests/run.mjs
+node scripts/pack-check.mjs
+node tests/run.mjs --deployed   # 需 SHADOW_PROFILE_TOOLS 指向已安装的 lib/tools.js
+node scripts/sync.mjs --profile <profile 目录>
+node scripts/fingerprint.mjs
 ```
 
-改动后的闭环：`npm test` → `npm run sync -- --profile <profile>` → 分别提交两个仓库 → 最后在 `restart-plugin` 执行 `npm run judge`。
-裁判只对提交里的部署字节放行，并核对宿主日志中的 `shadow: build <哈希>`；账本与续接队列位于 `<DSH_HOME>/.restart/`。
+部署闭环：先运行测试与 sync，提交影子仓库；需要重启验证时，从 `restart-plugin` checkout 运行 `node scripts/verify-and-restart.mjs --repo <shadow-plugin checkout>`。真实 judge 可能中断其他任务，必须作为该轮最后动作。裁判只放行与提交逐字节一致的部署副本，并核对宿主日志的 `shadow: build <哈希>`；账本与续接队列位于 `<DSH_HOME>/.restart/`。
 
 | 套件 | 覆盖 |
 |---|---|
@@ -269,13 +275,13 @@ npm run judge                   # 委托 restart-plugin：判定 → 重启 → 
    重启成功后，日志里应该正好有这三行，排查时值千金：
 
    ```
-   shadow: directory D:\DSH\shadow        ← 生效目录（配置对不对看这一行）
+   shadow: directory <home>\dsh-shadow      ← 默认目录；显式保留旧路径时会显示配置值
    shadow: build <12 位哈希>               ← 我加载的就是这些字节
    shadow: permission identity danger-full-access; interactive approvals are disabled
    ```
 
    中间那行是**构建戳**：宿主自报它加载的 `lib/*.js` 的内容哈希。重启后拿它和仓库里
-   `npm run fingerprint` 的输出对一下，相等才说明新代码真的在位——比"看文件时间戳"更硬，
+   `node scripts/fingerprint.mjs` 的输出对一下，相等才说明新代码真的在位——比"看文件时间戳"更硬，
    副本被改过、被别处副本顶替、或只拷了一半，哈希都会不一样。不想跑探针的话，
    这一行就是"改动生效了吗"的完整答案。
 
@@ -283,10 +289,10 @@ npm run judge                   # 委托 restart-plugin：判定 → 重启 → 
 
   > 冷会话恢复时也会再次钉住 `danger-full-access`。
 
-- 因此同步流程必须以这一步收尾（`npm run sync` 一次做完：按磁盘枚举 `lib/*.js` 复制，再跑 `--deployed`，半同步立刻失败）：
+- 因此同步流程必须以这一步收尾（源码 checkout 中的 sync 命令会按磁盘枚举 `lib/*.js` 复制，再跑 `--deployed`，半同步立刻失败）：
 
   ```sh
-  npm run sync -- --profile <你的 profile 目录>
+  node scripts/sync.mjs --profile <你的 profile 目录>
   ```
 
   等价的手工做法：
@@ -298,7 +304,7 @@ npm run judge                   # 委托 restart-plugin：判定 → 重启 → 
 
 ### 重启与续接
 
-重启裁判、worker、账本与续接队列均由独立仓库 `dsh-plugin-restart` 所有。它只在部署副本与目标提交逐字节一致时执行重启，并在 `<DSH_HOME>/.restart/` 记账。worker 会等待宿主日志安静后再重启；该操作可能中断其他任务，因此应将真实 `npm run judge` 留作一轮对话的最后动作。完整说明见 restart 仓库的 README。
+重启裁判、worker、账本与续接队列均由独立仓库 `dsh-plugin-restart` 所有。它只在部署副本与目标提交逐字节一致时执行重启，并在 `<DSH_HOME>/.restart/` 记账。worker 会等待宿主日志安静后再重启；该操作可能中断其他任务，因此应将真实 `node scripts/verify-and-restart.mjs --repo <shadow-plugin checkout>` 留作一轮对话的最后动作。完整说明见 restart 仓库的 README。
 
 影子插件不再包含重启 worker 或守卫热换路径。`dispatch-core.js` 的纯分类器仅供离线测试，不参与工具运行。
 
@@ -312,7 +318,7 @@ lib/shadow-dir.js    「影子目录」规则的唯一所有者
 lib/build-stamp.js   构建戳：挂载时自报加载了哪些字节
 lib/client.js        浏览器半边：侧栏入口与面板
 cordis.patch.yml     preset + 三条插件行
-scripts/judge.mjs              将重启任务委托给 dsh-plugin-restart
+scripts/             源码 checkout 的同步、指纹与 package 检查命令
 
 tests/               离线验证资产
 DESIGN.md            设计（不变量、权限模型、里程碑）
@@ -321,33 +327,28 @@ DISPATCH-SPEC.md     实现规格（运行时契约、状态机、幂等、验�
 
 ---
 
-## 发布前待办（维护者）
+## 发布资料状态（维护者）
 
 - [x] `repository` / `homepage` / `bugs` 指向 [RD2100/rd-shadow](https://github.com/RD2100/rd-shadow)
 - [x] 英文 README（[README.en.md](README.en.md)，两版互相链接）
-- [ ] 截图放进 README
-- [ ] 决定是否发布到 npm（不发布则只能从 git 或本地路径安装）
-- [x] CI：至少跑 `npm test`（`.github/workflows/test.yml`，ubuntu/windows × node 22/24）
-- [ ] 设计文档英译（`DESIGN.md` / `DISPATCH-SPEC.md` 目前为中文）
+- [x] 选择发布渠道：npm public package（`publishConfig.access=public`），发布前仍需维护者登录
+- [x] CI：运行 `node tests/run.mjs`（`.github/workflows/test.yml`，ubuntu/windows × Node 22/24）
 - [x] 历史出网守卫验证档案（[E2E-GUARD.md](E2E-GUARD.md)，仅供历史参考）
+
+可选的后续文档完善：添加截图、翻译 `DESIGN.md` / `DISPATCH-SPEC.md`；不影响运行时包和当前验证结果。
 
 ### 发布到 npm 的步骤
 
-预检（2026-10-29 核过）：包名 `dsh-plugin-shadow` 在 npm 上未被占用；`npm pack --dry-run`
-产出 16 个文件 135 kB 压缩包（`lib` + patch + LICENSE + 全部文档）；`npm run pack:check` 全过；
-CI 绿；tag `v0.5.0` 已推。
+发布前在源码 checkout 中运行：
 
 ```sh
-npm whoami                 # 未登录会报 ENEEDAUTH——发布需要维护者凭据
-npm run pack:check         # 产物自足性：files 覆盖、入口存在、只复制这些也能跑
+node tests/run.mjs
+node scripts/pack-check.mjs
+npm whoami                 # 发布需要维护者凭据
 npm publish --access public
 ```
 
-发布后核对：`npm view dsh-plugin-shadow version` 返回 `0.5.0`；从别处
-`npm install dsh-plugin-shadow` 后 `lib/tools.js` 可加载。
-
-安装方式（发布前也可用）：`npm install git+https://github.com/RD2100/rd-shadow.git`，
-或把仓库路径直接写进 profile 的 bundles。本机开发用 `npm run sync -- --profile <profile 目录>`。
+`pack-check` 校验真实 tarball 清单，将其安装到临时目录，并冒烟测试已安装的运行时与浏览器 bundle。通过本地检查不代表已发布或 registry 可用；发布前需由维护者确认 npm 包名和权限。未提交的工作树请用本机路径安装；目标版本提交并推送后可从 `https://github.com/RD2100/rd-shadow` 安装。
 
 ---
 
