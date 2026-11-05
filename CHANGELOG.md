@@ -2,6 +2,30 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+结构基线：拆模块、删死代码、补设计文档与用例对账。**运行时行为与模型可见输出不变**（tools-sim 38 个场景、纯核 44 项原样通过）；构建戳会变，因为 `lib/` 文件集变了。
+
+### Changed
+
+- `lib/dispatch-core.js`（1611 行）拆为 `core-contract` / `core-identity` / `core-log` / `core-admission` / `core-render`；原文件保留为只含 re-export 的兼容入口。
+- `lib/tools.js`（657 行）拆为 `host-io.js`（共享只读宿主访问）、`op-dispatch.js`（唯一副作用点）、`op-inspect.js`、`op-targets.js`、`core-serial.js`；`tools.js` 只剩 schema 与接线。
+- 所有测试套件改用 `tests/harness.mjs`，每个用例带 `TC-<AREA>-<NNN>` 编号；`client.test.mjs` 的异步用例此前未被等待，现在会被计入。
+- 设计与实测文档移到 `docs/history/`；npm 包只带 README、CHANGELOG、LICENSE（tarball 141 KiB）。README 改为面向使用者的精简版，维护内容移到 `docs/operations.md`。
+
+### Added
+
+- `AGENTS.md`、`docs/overview-design.md`、`docs/detailed-design.md`、`docs/test-cases.md`、`docs/decisions.md`、`docs/tasks.md`、`docs/operations.md`。
+- `tests/arch.test.mjs`：分层、副作用边界、文件行数、TODO 格式。
+- `tests/ops.test.mjs`：串行化器、分页夹取、标题收集、拒绝回执。
+- `tests/tc-index.mjs`：用例编号 ↔ `docs/test-cases.md` 对账。
+- 7 个 `todo` 用例，对应任务卡 TASK-01 至 TASK-05。
+
+### Removed
+
+- 停用的出网分类器（`inspectEgress`、`touchesProtected`、`assignmentsIn`、`DEFAULT_PROTECTED_PATHS` 等）、`tests/fuzz.mjs`、42 项分类器单测与 23 个已跳过的审批 hook 场景。最后版本见 tag `archive/egress-classifier`。
+- `lib/index.js` 中未使用的 `node:os`、`node:path` 导入。
+
 ## [0.11.0] — 2026-10-31
 
 ### Fixed
@@ -313,7 +337,7 @@
 
 - 中英文 README 补全出网守卫的完整行为表（不可读目的地、外服工具、非 HTTP 协议一律问人）、「段首才算命令」的散文豁免与可执行 span（`$(...)`/反引号/`{}`/子shell）的解析，与「覆盖不到」清单（重定向、脚本/别名间接、解释器非 URL 外发、UNC/同步目录）
 - 中英文 README 补「作用域」一节：守卫注册在 `preset-shadow` 的 agent 作用域里，只对影子会话生效；因此没有 CLI/API 能在影子会话外触发它，端到端必须在 GUI 里的影子会话中做
-- 新增 [E2E-GUARD.md](E2E-GUARD.md)：端到端验证提示词、操作员审批动作表、**以会话日志 `approval/asked` 为准**的判读方法（含 zstd 分帧解码）、首次运行的真实结果表、以及「修复后最短复跑路径」
+- 新增 [E2E-GUARD.md](https://github.com/RD2100/rd-shadow/blob/main/docs/history/E2E-GUARD.md)：端到端验证提示词、操作员审批动作表、**以会话日志 `approval/asked` 为准**的判读方法（含 zstd 分帧解码）、首次运行的真实结果表、以及「修复后最短复跑路径」
 - 端到端首次运行录到的 8 个真实调用原样固化进 `tests/dispatch-core.test.mjs`，作为永不回归的锚
 - `DISPATCH-SPEC.md` §11.12 更新为当前实现（命令头归一化、污点、fail closed 三种形态、75+52 项验证与端到端的价值）；`DESIGN.md` 对「自建守卫已评估未采用」补一条 dated 更正——外发目的地已单点落地
 - 更正启动身份行的成因说明：bundles 是**并发**挂载（加载器用 `Promise.all` 激活整个列表），数组顺序只影响 import 发起的先后，不决定完成顺序，也不保证启动那行显示 `auto`；每个会话创建时都会重新解析

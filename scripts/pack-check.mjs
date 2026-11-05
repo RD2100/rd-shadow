@@ -8,25 +8,22 @@
  * Usage: node scripts/pack-check.mjs
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs'
+import { suite } from '../tests/harness.mjs'
 import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
+const { check, done } = suite('pack')
+
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const manifest = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 
-/** Files used by runtime, users, and repository-local maintenance commands. */
+/** Documents shipped with the package. Design docs under docs/ stay in the repository (ADR-006). */
 const DOCS = [
   'README.md',
   'README.en.md',
   'CHANGELOG.md',
-  'E2E-GUARD.md',
-  'DESIGN.md',
-  'DISPATCH-SPEC.md',
-  'DISPATCH-ABSORPTION.md',
-  'SELFTEST.md',
-  'e2e/PROBES.md',
 ]
 const LIB_FILES = readdirSync(path.join(ROOT, 'lib'))
   .filter((name) => name.endsWith('.js'))
@@ -47,17 +44,6 @@ function runNpm(args, options) {
   return spawnSync('npm', args, options)
 }
 
-let failures = 0
-function check(name, fn) {
-  try {
-    fn()
-    console.log(`ok   ${name}`)
-  } catch (error) {
-    failures += 1
-    console.error(`FAIL ${name}: ${error?.message ?? error}`)
-  }
-}
-
 /** Whether one path is covered by the manifest's `files` entries. */
 function covered(relative) {
   if (relative === 'package.json') return true
@@ -68,14 +54,14 @@ function covered(relative) {
   })
 }
 
-check('published file manifest contains every selected artifact', () => {
+check('TC-PACK-001', 'published file manifest contains every selected artifact', () => {
   const missing = PACKAGE_FILES.filter((relative) => !covered(relative) || !existsSync(path.join(ROOT, relative)))
   if (missing.length > 0) throw new Error(`missing or not covered by "files": ${missing.join(', ')}`)
-  const unexpected = manifest.files.filter((relative) => relative === 'scripts' || relative === 'tests' || relative === 'e2e')
+  const unexpected = manifest.files.filter((relative) => relative === 'scripts' || relative === 'tests' || relative === 'e2e' || relative === 'docs' || relative === 'AGENTS.md')
   if (unexpected.length > 0) throw new Error(`repository-only assets must not ship: ${unexpected.join(', ')}`)
 })
 
-check('the bundle patch, licence, README links, and runtime files are published', () => {
+check('TC-PACK-002', 'the bundle patch, licence, README links, and runtime files are published', () => {
   for (const required of PACKAGE_FILES) {
     if (!existsSync(path.join(ROOT, required))) throw new Error(`declared but missing on disk: ${required}`)
   }
@@ -85,7 +71,7 @@ check('the bundle patch, licence, README links, and runtime files are published'
   }
 })
 
-check('every declared entry point exists and is published', () => {
+check('TC-PACK-003', 'every declared entry point exists and is published', () => {
   for (const [key, value] of Object.entries(manifest.exports)) {
     const relative = value.replace(/^\.\//, '')
     if (!existsSync(path.join(ROOT, relative))) throw new Error(`exports["${key}"] missing on disk: ${relative}`)
@@ -93,7 +79,7 @@ check('every declared entry point exists and is published', () => {
   }
 })
 
-check('runtime imports stay inside the published set or DSH runtime API', () => {
+check('TC-PACK-004', 'runtime imports stay inside the published set or DSH runtime API', () => {
   const published = PUBLISHED
   const hostApi = '@deepseek-ai/dsh-tools'
   const builtins = new Set(['node:os', 'node:path', 'node:crypto', 'node:util', 'node:fs', 'node:url'])
@@ -116,7 +102,7 @@ check('runtime imports stay inside the published set or DSH runtime API', () => 
   if (problems.length > 0) throw new Error(problems.join('; '))
 })
 
-check('published markdown links resolve inside the package', () => {
+check('TC-PACK-005', 'published markdown links resolve inside the package', () => {
   const published = PUBLISHED
   const problems = []
   for (const relative of DOCS) {
@@ -131,7 +117,7 @@ check('published markdown links resolve inside the package', () => {
   if (problems.length > 0) throw new Error(problems.join('; '))
 })
 
-check('the npm tarball inventory matches the selected publish set', () => {
+check('TC-PACK-006', 'the npm tarball inventory matches the selected publish set', () => {
   const result = runNpm(['pack', '--dry-run', '--json'], {
     cwd: ROOT,
     encoding: 'utf8',
@@ -148,7 +134,7 @@ check('the npm tarball inventory matches the selected publish set', () => {
   console.log(`    ${pack.filename}: ${pack.entryCount} files, ${(pack.unpackedSize / 1024).toFixed(1)} KiB unpacked`)
 })
 
-check('the published runtime imports work from an npm tarball install', () => {
+check('TC-PACK-007', 'the published runtime imports work from an npm tarball install', () => {
   const staging = mkdtempSync(path.join(os.tmpdir(), 'shadow-install-'))
   try {
     const packed = runNpm(['pack', '--json', '--pack-destination', staging], {
@@ -184,11 +170,10 @@ check('the published runtime imports work from an npm tarball install', () => {
   }
 })
 
-check('the published set is not empty and stays small', () => {
+check('TC-PACK-008', 'the published set is not empty and stays small', () => {
   const bytes = PACKAGE_FILES.reduce((sum, relative) => sum + statSync(path.join(ROOT, relative)).size, 0)
   if (bytes === 0) throw new Error('published set is empty')
   console.log(`    selected source size: ${(bytes / 1024).toFixed(1)} KiB`)
 })
 
-console.log(failures === 0 ? 'pack check: all checks passed' : `pack check: ${failures} failed`)
-process.exitCode = failures === 0 ? 0 : 1
+await done()

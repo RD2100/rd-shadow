@@ -6,18 +6,10 @@
  * checks drive `apply` with a fake context and assert what it reports.
  */
 import assert from 'node:assert/strict'
+import { suite } from './harness.mjs'
 import { apply } from '../lib/index.js'
 
-let passed = 0
-function check(name, fn) {
-  try {
-    fn()
-    passed += 1
-  } catch (error) {
-    console.error(`FAIL ${name}: ${error?.message ?? error}`)
-    process.exitCode = 1
-  }
-}
+const { check, todo, done } = suite('host-preflight')
 
 /**
  * Build the minimal host context `apply` needs.
@@ -74,13 +66,13 @@ function throwUnreadable() {
   throw new Error('log unavailable')
 }
 
-check('names the effective directory at startup', () => {
+check('TC-HOST-001', 'names the effective directory at startup', () => {
   const { ctx, lines } = makeCtx()
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
   assert.ok(lines.some((line) => line.includes('shadow: directory D:\\work\\shadow')), lines.join('\n'))
 })
 
-check('a fully equipped runtime reports no missing service', () => {
+check('TC-HOST-002', 'a fully equipped runtime reports no missing service', () => {
   const { ctx, lines } = makeCtx({
     services: ['permissionPresets', 'sessions', 'agents', 'llm', 'sessionController', 'sessionQuery', 'tools', 'workspaceRegistry'],
   })
@@ -88,7 +80,7 @@ check('a fully equipped runtime reports no missing service', () => {
   assert.deepEqual(lines.filter((line) => line.startsWith('warn')), [], lines.join('\n'))
 })
 
-check('missing services are named instead of failing silently', () => {
+check('TC-HOST-003', 'missing services are named instead of failing silently', () => {
   const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions', 'tools'] })
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
   const warning = lines.find((line) => line.startsWith('warn'))
@@ -97,13 +89,13 @@ check('missing services are named instead of failing silently', () => {
   assert.match(warning, /0\.2\.1-rc\.3/)
 })
 
-check('the expected runtime is named so a version mismatch is actionable', () => {
+check('TC-HOST-004', 'the expected runtime is named so a version mismatch is actionable', () => {
   const { ctx, lines } = makeCtx({ services: [] })
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
   assert.ok(lines.some((line) => line.startsWith('warn') && line.includes('dsh-desktop-next 2.0.20-next')))
 })
 
-check('a preflight failure never stops the plugin', () => {
+check('TC-HOST-005', 'a preflight failure never stops the plugin', () => {
   const { ctx } = makeCtx()
   // A context whose service store throws must still let apply wire its listener.
   const broken = {
@@ -115,20 +107,20 @@ check('a preflight failure never stops the plugin', () => {
   assert.doesNotThrow(() => apply(broken, { shadowDir: 'D:\\work\\shadow' }))
 })
 
-check('a session outside the directory is left alone', () => {
+check('TC-HOST-006', 'a session outside the directory is left alone', () => {
   const { ctx, applied } = makeCtx({ sessions: [{ id: 's-1', header: { cwd: 'D:\\elsewhere' } }] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
   assert.deepEqual(applied, [])
 })
 
-check('the shadow identity is fixed to full access without interactive review', () => {
+check('TC-HOST-007', 'the shadow identity is fixed to full access without interactive review', () => {
   const { ctx, lines, applied } = makeCtx()
   apply(ctx, { shadowDir: 'D:\\work\\shadow', permissionPreset: 'auto' })
   assert.ok(lines.includes('info shadow: permission identity danger-full-access; interactive approvals are disabled'), lines.join('\n'))
   assert.deepEqual(applied, ['shadow-1:danger-full-access'])
 })
 
-check('the listener is registered before the identity diagnostic runs', () => {
+check('TC-HOST-008', 'the listener is registered before the identity diagnostic runs', () => {
   const { ctx, order } = makeCtx()
   apply(ctx, { shadowDir: 'D:\\work\\shadow' })
   const listener = order.indexOf('on:session/created')
@@ -137,13 +129,13 @@ check('the listener is registered before the identity diagnostic runs', () => {
   assert.ok(listener < diagnostic, `the listener must come first: ${order.join(' -> ')}`)
 })
 
-check('a recorded user preset is replaced by full access on every shadow mount', () => {
+check('TC-HOST-009', 'a recorded user preset is replaced by full access on every shadow mount', () => {
   const { ctx, applied } = makeCtx({ recordedPreset: true })
   apply(ctx, { shadowDir: 'D:\\work\\shadow', permissionPreset: 'auto' })
   assert.deepEqual(applied, ['shadow-1:danger-full-access'])
 })
 
-check('the full-access identity is pinned when no review preset is offered', () => {
+check('TC-HOST-010', 'the full-access identity is pinned when no review preset is offered', () => {
   const { ctx, applied } = makeCtx({ presetNames: ['danger-full-access'] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
   assert.deepEqual(applied, ['shadow-1:danger-full-access'])
@@ -152,7 +144,7 @@ check('the full-access identity is pinned when no review preset is offered', () 
 // The resume queue moved to dsh-plugin-restart in 0.10.0, so a runtime without
 // the session entry costs this plugin nothing: the permission identity and the
 // tools still mount, and nothing here mentions a service it does not need.
-check('a runtime without the session entry still mounts, and says nothing about it', () => {
+check('TC-HOST-011', 'a runtime without the session entry still mounts, and says nothing about it', () => {
   const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions'] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
   assert.ok(!lines.some((line) => line.includes('resume queue')), lines.join('\n'))
@@ -161,10 +153,13 @@ check('a runtime without the session entry still mounts, and says nothing about 
 
 // The one thing this half does need beyond the identity services is the session
 // listing; a runtime missing only that must still mount.
-check('a runtime with the identity services mounts without complaint about the queue', () => {
+check('TC-HOST-012', 'a runtime with the identity services mounts without complaint about the queue', () => {
   const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions'] })
   assert.doesNotThrow(() => apply(ctx, { shadowDir: 'D:\\work\\shadow' }))
   assert.ok(!lines.some((line) => line.includes('resume queue')), lines.join('\n'))
 })
 
-console.log(`host preflight check: ${passed} checks passed`)
+todo('TC-HOST-013', 'a configured shadowDir that does not exist is named in one warning (TASK-01)')
+todo('TC-HOST-014', 'an existing shadowDir produces no directory warning (TASK-01)')
+
+await done()

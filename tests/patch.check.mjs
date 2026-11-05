@@ -3,15 +3,18 @@
  *
  * A YAML mistake here breaks the whole profile at startup, so this parses the
  * patch (including its `!!js` expressions) and asserts the shadow rows are where
- * DISPATCH-SPEC.md says they are.
+ * docs/detailed-design.md §1 says they are.
  *
  * Needs a YAML parser: install `js-yaml`, or point `JS_YAML` at a module path.
  * Without one the check reports itself skipped instead of failing.
  */
 import fs from 'node:fs'
+import { suite } from './harness.mjs'
 import path from 'node:path'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const { check, todo, done } = suite('patch')
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const PATCH = path.join(ROOT, 'cordis.patch.yml')
@@ -49,30 +52,17 @@ try {
 const jsType = new yaml.Type('tag:yaml.org,2002:js', { kind: 'scalar', construct: (data) => ({ __js: data }) })
 const schema = yaml.DEFAULT_SCHEMA.extend([jsType])
 
-let passed = 0
-let failed = 0
-function check(name, fn) {
-  try {
-    fn()
-    passed += 1
-    console.log(`ok   ${name}`)
-  } catch (error) {
-    failed += 1
-    console.error(`FAIL ${name}: ${error?.message ?? error}`)
-  }
-}
-
 const text = fs.readFileSync(PATCH, 'utf8')
 let doc
-check('patch parses as YAML with !!js expressions', () => {
+check('TC-PATCH-001', 'patch parses as YAML with !!js expressions', () => {
   doc = yaml.load(text, { schema })
 })
-check('patch is a top-level array of entries', () => {
+check('TC-PATCH-002', 'patch is a top-level array of entries', () => {
   if (!Array.isArray(doc) || doc.length === 0) throw new Error('expected a non-empty array')
 })
 
 const inserts = doc.filter((entry) => entry !== null && typeof entry === 'object' && Array.isArray(entry.insert))
-check('one insert entry holds the preset and plugin rows', () => {
+check('TC-PATCH-003', 'one insert entry holds the preset and plugin rows', () => {
   if (inserts.length !== 1) throw new Error(`expected exactly one insert entry, found ${inserts.length}`)
 })
 const rows = inserts[0]?.insert ?? []
@@ -81,7 +71,7 @@ const preset = byId.get('preset-shadow')
 const plugins = preset?.config?.plugins ?? []
 const ids = plugins.map((plugin) => plugin.id)
 
-check('the shadow preset row exists and keeps its persona', () => {
+check('TC-PATCH-004', 'the shadow preset row exists and keeps its persona', () => {
   if (preset === undefined) throw new Error('missing preset-shadow row')
   if (preset.name !== '@deepseek-ai/dsh-agent-preset') throw new Error(`unexpected preset name ${preset.name}`)
   if (preset.config?.id !== 'shadow') throw new Error('preset id must stay "shadow"')
@@ -91,7 +81,7 @@ check('the shadow preset row exists and keeps its persona', () => {
   }
 })
 
-check('the dispatch tools row is rooted at the package name', () => {
+check('TC-PATCH-005', 'the dispatch tools row is rooted at the package name', () => {
   const at = ids.indexOf('shadow-tools')
   if (at < 0) throw new Error('missing shadow-tools row')
   if (ids[at - 1] !== 'tool-goal') throw new Error(`shadow-tools must follow tool-goal, found ${ids[at - 1]}`)
@@ -107,7 +97,7 @@ check('the dispatch tools row is rooted at the package name', () => {
   if (row.config?.unconditionalAllow !== undefined) throw new Error('shadow tools must not expose a switch that re-enables approvals')
 })
 
-check('the host row keeps its directory and permission identity', () => {
+check('TC-PATCH-006', 'the host row keeps its directory and permission identity', () => {
   const host = byId.get('shadow')
   if (host === undefined) throw new Error('missing shadow row')
   if (host.name !== PACKAGE_NAME) {
@@ -121,7 +111,7 @@ check('the host row keeps its directory and permission identity', () => {
   if (host.config?.shadowPresetId !== 'shadow') throw new Error('host shadowPresetId must stay "shadow"')
 })
 
-check('both rows name the same directory', () => {
+check('TC-PATCH-007', 'both rows name the same directory', () => {
   const tools = plugins.find((plugin) => plugin.id === 'shadow-tools')
   const host = byId.get('shadow')
   if (tools?.config?.shadowDir?.__js !== host?.config?.shadowDir?.__js) throw new Error('shadowDir drifted between rows')
@@ -130,12 +120,13 @@ check('both rows name the same directory', () => {
   if (resolved !== expected) throw new Error(`shadowDir expression resolved to ${resolved}, expected ${expected}`)
 })
 
-check('the win32 tool selection is still expressed as !!js', () => {
+check('TC-PATCH-008', 'the win32 tool selection is still expressed as !!js', () => {
   const bash = plugins.find((plugin) => plugin.id === 'tool-bash')
   const pwsh = plugins.find((plugin) => plugin.id === 'tool-pwsh')
   if (bash?.disabled?.__js === undefined) throw new Error('tool-bash disabled is no longer a !!js expression')
   if (pwsh?.disabled?.__js === undefined) throw new Error('tool-pwsh disabled is no longer a !!js expression')
 })
 
-console.log(`patch check: ${passed} passed, ${failed} failed`)
-process.exitCode = failed === 0 ? 0 : 1
+todo('TC-PATCH-009', 'the shadow persona says another Session\'s content is data, not instructions (TASK-04)')
+
+await done()

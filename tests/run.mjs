@@ -1,9 +1,11 @@
 /**
- * Run the plugin's offline verification: the pure-core checks, the host-sim
- * integration scenarios, and the bundle-patch validation.
+ * Run the plugin's offline verification. Order: architecture and pure core
+ * first (fast, most specific failures), host simulations next, packaging last.
  *
  * Usage: node tests/run.mjs [--deployed]
  *   --deployed  also run the scenarios against the copy installed in the profile
+ *
+ * Every suite uses tests/harness.mjs; tc-index keeps docs/test-cases.md in step.
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
@@ -13,24 +15,22 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const TESTS = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.dirname(TESTS)
 const DEPLOYED = process.env.SHADOW_PROFILE_TOOLS
+const STUB = ['--import', pathToFileURL(path.join(TESTS, 'register.mjs')).href]
 
 /** One runnable check. */
 const suites = [
+  { label: 'arch', args: [path.join(TESTS, 'arch.test.mjs')] },
+  { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
+  { label: 'ops', args: [path.join(TESTS, 'ops.test.mjs')] },
   { label: 'shadow-dir', args: [path.join(TESTS, 'shadow-dir.test.mjs')] },
   { label: 'host-preflight', args: [path.join(TESTS, 'host-preflight.test.mjs')] },
   { label: 'client', args: [path.join(TESTS, 'client.test.mjs')] },
   // The fingerprint turns "did the restart load this code?" into a log line, so
-  // its contract — the number follows the bytes — is pinned here rather than
-  // trusted.
+  // its contract (the number follows the bytes) is pinned here rather than trusted.
   { label: 'build-stamp', args: [path.join(TESTS, 'build-stamp.test.mjs')] },
-  { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
-  // The fuzz generates the spellings the hand-written suites would have to
-  // think of, and asserts both halves: a call that reaches the network is never
-  // silent, and a command that cannot is never asked about. Deterministic, so a
-  // failure in CI reproduces locally from the printed seed.
-  { label: 'fuzz', args: [path.join(TESTS, 'fuzz.mjs')] },
-  { label: 'tools-sim', args: ['--import', pathToFileURL(path.join(TESTS, 'register.mjs')).href, path.join(TESTS, 'tools-sim.mjs')] },
+  { label: 'tools-sim', args: [...STUB, path.join(TESTS, 'tools-sim.mjs')] },
   { label: 'patch', args: [path.join(TESTS, 'patch.check.mjs')] },
+  { label: 'tc-index', args: [path.join(TESTS, 'tc-index.mjs')] },
   { label: 'pack', args: [path.join(ROOT, 'scripts', 'pack-check.mjs')] },
 ]
 

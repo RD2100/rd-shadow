@@ -8,24 +8,16 @@
  * with stub modules, then drive the operations its slot exposes.
  */
 import assert from 'node:assert/strict'
+import { suite } from './harness.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
+const { check, done } = suite('client')
+
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const SOURCE = fs.readFileSync(process.env.SHADOW_CLIENT ?? path.join(ROOT, 'lib', 'client.js'), 'utf8')
-
-let passed = 0
-function check(name, fn) {
-  try {
-    fn()
-    passed += 1
-  } catch (error) {
-    console.error(`FAIL ${name}: ${error?.message ?? error}`)
-    process.exitCode = 1
-  }
-}
 
 /** Load the bundle in a sandbox and return its exports plus the slot it registers. */
 function loadBundle() {
@@ -102,7 +94,7 @@ function services(overrides = {}) {
   }
 }
 
-check('the bundle declares its loader id and both plugin exports', () => {
+check('TC-CLIENT-001', 'the bundle declares its loader id and both plugin exports', () => {
   const { id, exports } = loadBundle()
   assert.equal(id, 'dsh-plugin-shadow')
   assert.equal(typeof exports.apply, 'function')
@@ -110,7 +102,7 @@ check('the bundle declares its loader id and both plugin exports', () => {
   assert.deepEqual([...exports.inject], ['slots', 'locale', 'uiWorkspace', 'sessions', 'workspaces'])
 })
 
-check('apply registers the sidebar slot and the dictionaries', () => {
+check('TC-CLIENT-002', 'apply registers the sidebar slot and the dictionaries', () => {
   const { slot, calls } = mount({ services: services().services })
   assert.deepEqual(calls.registered, ['sidebar.footer.action'])
   assert.equal(slot.name, 'sidebar.footer.action')
@@ -121,7 +113,7 @@ check('apply registers the sidebar slot and the dictionaries', () => {
   assert.ok(calls.locale[0].dictionaries.en['entry.label'] !== undefined)
 })
 
-check('the slot face exposes the five operations', () => {
+check('TC-CLIENT-003', 'the slot face exposes the five operations', () => {
   const { slot } = mount({ services: services().services })
   const face = slot.inject()
   for (const key of ['openShadow', 'createShadow', 'shadowDir', 'presetId', 'renameShadow', 'archiveShadow']) {
@@ -131,7 +123,7 @@ check('the slot face exposes the five operations', () => {
   assert.equal(face.presetId, 'shadow')
 })
 
-check('an already-registered workspace still creates a Session (the adopt fix)', async () => {
+check('TC-CLIENT-004', 'an already-registered workspace still creates a Session (the adopt fix)', async () => {
   const { calls, services: fake } = services()
   // This is the shape that used to throw "could not adopt": ok:false carrying the entity.
   fake.workspaces.create = async (request) => {
@@ -147,7 +139,7 @@ check('an already-registered workspace still creates a Session (the adopt fix)',
   assert.deepEqual(calls.opened, ['session-new'])
 })
 
-check('a bare workspace view is accepted too', async () => {
+check('TC-CLIENT-005', 'a bare workspace view is accepted too', async () => {
   const { calls, services: fake } = services()
   fake.workspaces.create = async (request) => {
     calls.created.unshift(request)
@@ -158,27 +150,27 @@ check('a bare workspace view is accepted too', async () => {
   assert.deepEqual({ ...calls.created[1] }, { workspaceId: 'ws-bare', agentPreset: 'shadow' })
 })
 
-check('a result with no identity at all fails loudly', async () => {
+check('TC-CLIENT-006', 'a result with no identity at all fails loudly', async () => {
   const { services: fake } = services()
   fake.workspaces.create = async () => ({ ok: false, error: { message: 'nope' } })
   const { slot } = mount({ services: fake })
   await assert.rejects(() => slot.inject().createShadow(), /could not adopt/)
 })
 
-check('a Session without an identity fails loudly', async () => {
+check('TC-CLIENT-007', 'a Session without an identity fails loudly', async () => {
   const { services: fake } = services()
   fake.sessions.create = async () => undefined
   const { slot } = mount({ services: fake })
   await assert.rejects(() => slot.inject().createShadow(), /no identity/)
 })
 
-check('a missing shadowDir is reported instead of adopted', async () => {
+check('TC-CLIENT-008', 'a missing shadowDir is reported instead of adopted', async () => {
   const { services: fake } = services()
   const { slot } = mount({ services: fake, shadowDir: '' })
   await assert.rejects(() => slot.inject().createShadow(), /no shadowDir/)
 })
 
-check('a model pin failure does not block creation', async () => {
+check('TC-CLIENT-009', 'a model pin failure does not block creation', async () => {
   const { calls, services: fake } = services()
   fake.sessions.selectModel = async () => {
     throw new Error('route rejected')
@@ -195,16 +187,16 @@ check('a model pin failure does not block creation', async () => {
   assert.deepEqual(calls.opened, ['session-new'])
 })
 
-check('openShadow routes through the official navigation', () => {
+check('TC-CLIENT-010', 'openShadow routes through the official navigation', () => {
   const { calls, services: fake } = services()
   const { slot } = mount({ services: fake })
   slot.inject().openShadow('session-x')
   assert.deepEqual(calls.opened, ['session-x'])
 })
 
-check('a missing navigation service is reported', () => {
+check('TC-CLIENT-011', 'a missing navigation service is reported', () => {
   const { slot } = mount({ services: { sessions: {}, workspaces: {} } })
   assert.throws(() => slot.inject().openShadow('session-x'), /uiWorkspace/)
 })
 
-console.log(`client half check: ${passed} checks passed`)
+await done()
