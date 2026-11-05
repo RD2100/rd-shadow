@@ -162,4 +162,53 @@ check('TC-HOST-012', 'a runtime with the identity services mounts without compla
 todo('TC-HOST-013', 'a configured shadowDir that does not exist is named in one warning (TASK-01)')
 todo('TC-HOST-014', 'an existing shadowDir produces no directory warning (TASK-01)')
 
+/**
+ * A live subagent Session in the shadow directory with an appendable log.
+ * @param events - events already in its log.
+ * @returns the Session plus the events it was asked to append.
+ */
+function subagentSession(events = []) {
+  const appended = []
+  return {
+    appended,
+    session: {
+      id: 'child-1',
+      header: { cwd: 'D:\\work\\shadow', parentSession: 'shadow-1' },
+      snapshotEvents: () => [...events, ...appended],
+      append: (type, data) => { appended.push({ type, data }) },
+    },
+  }
+}
+
+check('TC-HOST-015', 'a subagent in the shadow directory is limited to workspace-write, not given full access', () => {
+  const child = subagentSession([{ type: 'permission/preset', data: { preset: 'danger-full-access' } }])
+  const { ctx, applied, lines } = makeCtx({ sessions: [child.session], currentPreset: 'danger-full-access' })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.deepEqual(applied, [], 'no preset switch for a subagent')
+  assert.deepEqual(child.appended, [{ type: 'sandbox/mode', data: { mode: 'workspace-write' } }])
+  assert.ok(lines.includes('info shadow: subagent child-1 sandbox -> workspace-write'), lines.join('\n'))
+})
+
+check('TC-HOST-016', 'an already-limited subagent is left alone on the next mount', () => {
+  const child = subagentSession([{ type: 'sandbox/mode', data: { mode: 'workspace-write' } }])
+  const { ctx, applied } = makeCtx({ sessions: [child.session] })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.deepEqual(applied, [])
+  assert.deepEqual(child.appended, [])
+})
+
+check('TC-HOST-017', 'a subagent outside the shadow directory is not touched', () => {
+  const child = subagentSession()
+  child.session.header.cwd = 'D:\\work\\project'
+  const { ctx } = makeCtx({ sessions: [child.session] })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.deepEqual(child.appended, [])
+})
+
+check('TC-HOST-018', 'the subagent rule is announced in its own startup line', () => {
+  const { ctx, lines } = makeCtx()
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  assert.ok(lines.includes('info shadow: subagents of the shadow run in workspace-write with approvals rejected'), lines.join('\n'))
+})
+
 await done()

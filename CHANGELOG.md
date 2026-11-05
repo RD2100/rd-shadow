@@ -2,9 +2,17 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.12.0] — 2026-11-06
 
-结构基线：拆模块、删死代码、补设计文档与用例对账。**运行时行为与模型可见输出不变**（tools-sim 38 个场景、纯核 44 项原样通过）；构建戳会变，因为 `lib/` 文件集变了。
+结构基线（拆模块、删死代码、补设计文档与用例对账），外加一条安全修正：**影子派生的子代理不再拥有完全权限**。三个工具的行为与模型可见输出不变（tools-sim 38 个场景、纯核 44 项原样通过）；构建戳会变，因为 `lib/` 文件集变了。
+
+### Security
+
+- 影子目录内的子代理（`header.parentSession` 存在）不再保留从父会话继承的 `danger-full-access`：host 半边在 `session/created` 与挂载时写入 `sandbox/mode = workspace-write`，审批保持运行时为子代理固定的 `never`，越权操作立即被拒绝（ADR-009）。启动日志新增一行 `shadow: subagents of the shadow run in workspace-write with approvals rejected`。
+
+### Known gaps
+
+- 7 个已规格化的 `todo` 用例（TASK-01 至 TASK-05）留待后续版本，见 `docs/tasks.md`。其中 TASK-01 修的是本机 0.11.0 升级后影子目录失效却没有告警的问题。
 
 ### Changed
 

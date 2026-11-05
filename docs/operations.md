@@ -62,4 +62,14 @@ node scripts/fingerprint.mjs                         # 3. 记下期望构建戳
 2. 在没有沙箱限制的终端里 `node scripts/pack-check.mjs` 通过
 3. `package.json` 版本、`CHANGELOG.md` 的 Unreleased 改为版本号与日期、`lib/index.js` 的 `EXPECTED_RUNTIME` 是否需要更新
 4. `git tag v<版本>`，推送分支与 tag
-5. npm 发布取决于未决问题 Q4
+5. npm 发布（ADR-010），在源码 checkout 里：
+
+   ```sh
+   npm login                      # 维护者账号；只需一次
+   npm whoami
+   npm publish --dry-run          # 核对文件清单：lib/、cordis.patch.yml、README×2、CHANGELOG、LICENSE、package.json
+   npm publish --access public
+   npm view dsh-plugin-shadow version
+   ```
+
+   发布后 72 小时内可 `npm unpublish dsh-plugin-shadow@<版本>`；之后同一版本号永远不能再用。

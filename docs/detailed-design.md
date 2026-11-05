@@ -140,7 +140,7 @@ status==='running' → busy
 
 ### 3.9 index.js（host 半边）
 
-`apply(ctx, config)`：`config.shadowDir` 经 `expandShadowDir`，缺省 `DEFAULT_SHADOW_DIR`。顺序固定：预检缺失服务（warn）→ 注入 `permissionPresets`、`sessions` → info 目录 → info 构建戳 → 注册 `session/created` → info 权限身份 → 遍历已有会话固定权限。`pin` 内异常只 warn。
+`apply(ctx, config)`：`config.shadowDir` 经 `expandShadowDir`，缺省 `DEFAULT_SHADOW_DIR`。顺序固定：预检缺失服务（warn）→ 注入 `permissionPresets`、`sessions` → info 目录 → info 构建戳 → 注册 `session/created` → info 权限身份 → info 子代理规则 → 遍历已有会话。`pin` 对影子目录内的会话：根会话设 `danger-full-access`；`header.parentSession` 存在的子代理写 `sandbox/mode = workspace-write`（已是则跳过，ADR-009）。`pin` 内异常只 warn。
 
 ### 3.10 client.js
 
@@ -269,6 +269,8 @@ read one target exactly with shadow_inspect; deliver with shadow_dispatch.
 | `workspaceRegistry` | `get/list`；实体 `{id, title, path, sessionIds}`（`sessionIds` 已按 cwd 过滤）；`archivedSessionIds: string[]` |
 | `agentDefaultModel.currentSelection()` | `{provider, model, reasoningEffort?}` 或 null |
 | 事件 | `tool/call{callId,name,arguments(JSON 串)}`、`tool/ptc-dispatch-start{subCallId,name,arguments(对象)}`、`agent/inbox/spliced{target,start,removedCount?,inserted}`、`user/message`、`request/header{header.config}`、`model/selection`、`assistant/message|attempt`、`step/end`、`turn/end`、`tool/result{message.toolCallId}`、`approval/asked|decided{id}` |
+| `session`（host 半边） | `header.{id, cwd, parentSession?}`、`append(type, data)`、`snapshotEvents()`；`sandbox/mode` 事件 `{mode}` 等价于 `dsh-sandbox-policy` 的 `setSandboxMode` |
+| 子代理继承 | `dsh-subagent` 在 setup 阶段把父会话的 `danger-full-access` 与 `approval/policy=never` 写进子会话；`session/created` 在 setup 之后触发；官方 `pinInitialPermission` 不覆盖已有 `sandbox/mode` |
 | 模块解析 | `@deepseek-ai/dsh-tools` 由 DSH loader 注册表提供，**不得**写进 `package.json` |
 
 仿真替身：`tests/tools-sim.mjs` 的 `makeWorld()` 实现上表全部形状；`tests/dsh-tools-stub.mjs` 复刻 `defineTool` 的作者 schema 校验。真实形状变化时，先改替身再改实现。

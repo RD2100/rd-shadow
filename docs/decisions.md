@@ -12,6 +12,9 @@
 | 006 | 测试用例编号 + 文档对账；设计文档不进 npm 包 | Accepted | 0.12.0 |
 | 007 | 投递只走 `agent.send` 中继，不走 `sessionController.prompt` | Accepted | 0.2.0 |
 | 008 | 显式 selection 接受"同时保存为全局默认"的官方副作用 | Accepted | 0.2.0 |
+| 009 | 影子的子代理降为 `workspace-write`，审批保持 `never` | Accepted | 0.12.0 |
+| 010 | 发布到 npm（`dsh-plugin-shadow`） | Accepted | 0.12.0 |
+| 011 | 本机保留 `D:\DSH\shadow` 作为影子目录 | Accepted（待执行 TASK-08） | 0.12.0 |
 
 ## ADR-001 完全权限、无审批
 
@@ -58,12 +61,38 @@
 
 ---
 
+## ADR-009 子代理不给完全权限
+
+- **决策人**：用户（2026-11-06，"子智能体不能给权限"）。
+- **运行时事实**（从 rc.3 `app.asar` 读出）：
+  - `dsh-subagent` 的 `captureDelegatedPolicyOverrides` 把父会话的 `danger-full-access` 复制到子会话日志，并把子会话审批策略固定为 `never`；子会话头的 `cwd` 取自父会话，`parentSession` 为父 id。
+  - 这些事件在子会话 setup 阶段写入；`session/created` 在 setup 之后由 `dsh-agent-loop` 的 publish 触发。
+  - 官方 `pinInitialPermission` 只补缺失项，不覆盖已有的 `sandbox/mode`。
+- **因此**：只是"不再固定子代理"没有用，子代理仍会继承完全权限。host 半边必须主动写一条 `sandbox/mode = workspace-write`。
+- **决策**：影子目录内、`header.parentSession` 存在的会话，在 `session/created` 和挂载时写入 `sandbox/mode = workspace-write`；已是该值则不写。审批保持继承来的 `never`：越权操作立即被拒绝，不会卡在没人回答的审批上。
+- **后果**：子代理只能写影子目录和允许的临时目录。需要改别的项目时，影子应当用 `shadow_dispatch` 把活派给那个项目的会话，而不是派子代理。composer 里子会话的权限显示为 `custom`（`workspace-write` + `never` 不对应任何预设）。
+- **依赖**：`sandbox/mode` 事件形状 `{mode}`（与 `dsh-sandbox-policy` 的 `setSandboxMode` 相同）、`session.append`、`session.snapshotEvents()`。见 `detailed-design.md` §7。
+- **测试**：TC-HOST-015 至 TC-HOST-018；端到端 TC-E2E-004。
+
+## ADR-010 发布到 npm
+
+- **决策人**：用户（2026-11-06，"要发布"）。
+- 包名 `dsh-plugin-shadow`（2026-11-06 查询 registry 未被占用）。tarball 只含 `lib/`、`cordis.patch.yml`、README、CHANGELOG、LICENSE。
+- 发布需要维护者在本机 `npm login`；步骤见 `operations.md` §5。
+
+## ADR-011 本机保留旧影子目录
+
+- **决策人**：用户（2026-11-06，按建议）。保留 `D:\DSH\shadow` 的 20 个会话与台账，不迁移到 `<home>/dsh-shadow`。
+- 执行方式见 TASK-08 / `operations.md` §4。因为要改正在运行的 profile 并重启 DSH，执行前仍需用户确认时机。
+
+---
+
 ## 未决问题
 
 | # | 问题 | 选项 | 建议 | 决策人 |
 |---|---|---|---|---|
-| Q1 | 影子派生的子代理（同目录）是否也固定 `danger-full-access`？当前会被固定 | (a) 维持；(b) `pin` 跳过 `header.parentSession !== undefined` 的会话，子代理继承部署默认 | (b)：子代理本来就不能调用影子工具，没有理由给它完全权限。但需先确认子代理在默认权限下遇到审批时不会卡死 | 用户 |
-| Q2 | 本机影子目录：迁到 `<home>/dsh-shadow`，还是在 profile 中保留 `D:\DSH\shadow`？ | (a) 保留旧目录（改 profile 两行）；(b) 迁移 | (a)：保留 20 个既有会话与台账 | 用户（见 TASK-08） |
+| Q1 | ~~子代理是否固定完全权限~~ | | 已决：ADR-009 | |
+| Q2 | ~~本机影子目录~~ | | 已决：ADR-011 | |
 | Q3 | 跨影子实例对同一目标的竞态是否需要测试？ | (a) 在仿真里加两个 tools 实例共享一个 world；(b) 维持论证 | (a)，成本低 | 维护者 |
-| Q4 | 发布渠道：npm 还是仅 Git/本地路径？ | (a) 发布 npm；(b) 删除 `publishConfig` 与 README 的 npm 说明 | 由是否有外部用户决定 | 用户 |
+| Q4 | ~~发布渠道~~ | | 已决：ADR-010 | |
 | Q5 | "已确认监管项目"清单目前手写在影子工作目录的 `REGISTRY.md`，是否需要工具化？ | (a) 维持手写；(b) 独立账本插件（ADR-003） | 先 (a)，有 3 个以上项目再评估 | 用户 |

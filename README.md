@@ -26,7 +26,7 @@
 
 ## 权限与安全
 
-影子会话固定使用 `danger-full-access`，工具调用不等待审批（见 [决策 ADR-001](https://github.com/RD2100/rd-shadow/blob/main/docs/decisions.md)）。影子可以读写完整文件系统并访问外网，也会读到别的会话里的内容。只在你信任影子指令和工作区内容时使用。
+影子会话固定使用 `danger-full-access`，工具调用不等待审批（见 [决策 ADR-001](https://github.com/RD2100/rd-shadow/blob/main/docs/decisions.md)）。影子可以读写完整文件系统并访问外网，也会读到别的会话里的内容。只在你信任影子指令和工作区内容时使用。影子派生的子代理**不**继承完全权限：插件把它们降为 `workspace-write`，需要更大权限的操作直接被拒绝（[ADR-009](https://github.com/RD2100/rd-shadow/blob/main/docs/decisions.md)）。
 
 ## 要求
 
@@ -48,12 +48,13 @@
 
 **host 行（`shadow`）与 preset 内的 `shadow-tools` 行必须配置同一个 `shadowDir`。** 从 0.11.0 之前升级、想保留原来的影子目录时，必须在 profile 里显式覆盖这两行，否则既有影子会话不再被识别。步骤见 [运维手册 §4](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md)。
 
-启动后宿主日志应有三行：
+启动后宿主日志应有这四行：
 
 ```text
 shadow: directory <影子目录>
 shadow: build <12 位哈希>        ← 与 checkout 里 node scripts/fingerprint.mjs 的输出相同
 shadow: permission identity danger-full-access; interactive approvals are disabled
+shadow: subagents of the shadow run in workspace-write with approvals rejected
 ```
 
 ## 已知限制
