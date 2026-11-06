@@ -72,6 +72,7 @@ function mount(options = {}) {
 /** Fake collaborator set that records what the panel asks for. */
 function services(overrides = {}) {
   const calls = { opened: [], created: [], selectedModel: [] }
+  const world = overrides.world ?? { sessions: {}, workspaces: [], archivedIds: [] }
   return {
     calls,
     services: {
@@ -82,16 +83,36 @@ function services(overrides = {}) {
           return 'session-new'
         },
         selectModel: async (request) => calls.selectedModel.push(request),
+        // What the browser half reads to discover the shadow Workspace.
+        byId: () => world.sessions,
       },
       workspaces: {
+        listSnapshot: () => world.workspaces,
         create: async (request) => {
           calls.created.unshift(request)
           return { ok: true, value: { workspace: { workspaceId: 'ws-1' } } }
         },
+        archiveSession: async () => ({ ok: true }),
+        archivedSessionIds: world.archivedIds,
       },
       ...overrides,
     },
   }
+}
+
+/**
+ * A world where the shadow owns a Workspace through its own Sessions.
+ * @param shadowSessionIds - Sessions created with the shadow preset.
+ * @param extra - extra sessions, workspaces, or archived ids.
+ * @returns the `world` override for {@link services}.
+ */
+function shadowWorld(shadowSessionIds, extra = {}) {
+  const sessions = {}
+  for (const id of shadowSessionIds) {
+    sessions[id] = { displayTitle: id, projectionValues: { agentPreset: 'shadow' } }
+  }
+  const workspaces = [{ workspaceId: 'ws-shadow', title: 'shadow', path: 'D:\\DSH\\shadow', sessionIds: shadowSessionIds }]
+  return { sessions, workspaces, archivedIds: [], ...extra }
 }
 
 check('TC-CLIENT-001', 'the bundle declares its loader id and both plugin exports', () => {
@@ -113,13 +134,14 @@ check('TC-CLIENT-002', 'apply registers the sidebar slot and the dictionaries', 
   assert.ok(calls.locale[0].dictionaries.en['entry.label'] !== undefined)
 })
 
-check('TC-CLIENT-003', 'the slot face exposes the five operations', () => {
+check('TC-CLIENT-003', 'the slot face exposes the panel operations', () => {
   const { slot } = mount({ services: services().services })
   const face = slot.inject()
-  for (const key of ['openShadow', 'createShadow', 'shadowDir', 'presetId', 'renameShadow', 'archiveShadow']) {
+  for (const key of ['openShadow', 'createShadow', 'presetId', 'renameShadow', 'archiveShadow', 'shadowWorkspace']) {
     assert.ok(key in face, `missing ${key}`)
   }
-  assert.equal(face.shadowDir, 'D:\\work\\shadow')
+  // The browser half never receives the row config, so the preset id is the
+  // bundle's own constant; TC-PATCH-004 pins it against the patch row.
   assert.equal(face.presetId, 'shadow')
 })
 
@@ -164,10 +186,10 @@ check('TC-CLIENT-007', 'a Session without an identity fails loudly', async () =>
   await assert.rejects(() => slot.inject().createShadow(), /no identity/)
 })
 
-check('TC-CLIENT-008', 'a missing shadowDir is reported instead of adopted', async () => {
+check('TC-CLIENT-008', 'with no shadow workspace yet the panel says what to do', async () => {
   const { services: fake } = services()
   const { slot } = mount({ services: fake, shadowDir: '' })
-  await assert.rejects(() => slot.inject().createShadow(), /no shadowDir/)
+  await assert.rejects(() => slot.inject().createShadow(), /no shadow workspace yet/)
 })
 
 check('TC-CLIENT-009', 'a model pin failure does not block creation', async () => {
@@ -197,6 +219,52 @@ check('TC-CLIENT-010', 'openShadow routes through the official navigation', () =
 check('TC-CLIENT-011', 'a missing navigation service is reported', () => {
   const { slot } = mount({ services: { sessions: {}, workspaces: {} } })
   assert.throws(() => slot.inject().openShadow('session-x'), /uiWorkspace/)
+})
+
+/* ------------------------------------------------------------------ */
+/* Workspace discovery (ADR-016)                                       */
+/* ------------------------------------------------------------------ */
+
+check('TC-CLIENT-012', 'the shadow workspace is found through its own Sessions, not a path', () => {
+  const { slot } = mount({ services: services({ world: shadowWorld(['s1', 's2']) }).services })
+  const face = slot.inject()
+  assert.equal(face.shadowWorkspace?.workspaceId, 'ws-shadow')
+})
+
+check('TC-CLIENT-013', 'creating a conversation reuses the discovered workspace instead of adopting a path', async () => {
+  const { calls, services: fake } = services({ world: shadowWorld(['s1']) })
+  const adopt = fake.workspaces.create
+  fake.workspaces.create = async () => { throw new Error('adopt must not be called') }
+  const { slot } = mount({ services: fake })
+  const sessionId = await slot.inject().createShadow()
+  fake.workspaces.create = adopt
+  assert.equal(sessionId, 'session-new')
+  assert.deepEqual({ ...calls.created[0] }, { workspaceId: 'ws-shadow', agentPreset: 'shadow' })
+})
+
+check('TC-CLIENT-014', 'a workspace holding no shadow Session is not the shadow workspace', () => {
+  const world = shadowWorld(['s1'], {
+    sessions: {
+      s1: { displayTitle: 's1', projectionValues: { agentPreset: 'shadow' } },
+      other: { displayTitle: 'other', projectionValues: { agentPreset: 'standard' } },
+    },
+    workspaces: [
+      { workspaceId: 'ws-shadow', title: 'shadow', path: 'D:\\DSH\\shadow', sessionIds: ['s1'] },
+      { workspaceId: 'ws-other', title: 'proj', path: 'D:\\work\\proj', sessionIds: ['other'] },
+    ],
+  })
+  const { slot } = mount({ services: services({ world }).services })
+  assert.equal(slot.inject().shadowWorkspace?.workspaceId, 'ws-shadow')
+})
+
+check('TC-CLIENT-015', 'archived shadow Sessions do not make a workspace the shadow workspace', () => {
+  const world = shadowWorld([], {
+    sessions: { old: { displayTitle: 'old', projectionValues: { agentPreset: 'shadow' } } },
+    workspaces: [{ workspaceId: 'ws-old', title: 'old', path: 'D:\\old', sessionIds: ['old'] }],
+    archivedIds: ['old'],
+  })
+  const { slot } = mount({ services: services({ world }).services })
+  assert.equal(slot.inject().shadowWorkspace, undefined)
 })
 
 await done()

@@ -2,6 +2,17 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.13.3] — 2026-11-06
+
+### Fixed
+
+- 侧栏"影子"入口点击无反应。根因：**DSH 插件行的 `config` 从来不会传给浏览器半边**（客户端模块系统用 `{name: id}` 建条目，启动清单只带 id/inject/immediately；rc.3 源码三处互证）。我们的 `client.js` 自 v0.1.0 起依赖它，`shadowDir` 一直是空串，于是面板既列不出也建不了会话（ADR-016）。
+- `createShadow` 读工作区 id 时取错了字段（`.id` 而不是 `.workspaceId`）。
+
+### Changed
+
+- 浏览器半边改为按"影子预设的会话"识别影子工作区（工作区的 `sessionIds` 宿主侧已按 cwd 过滤，所以该工作区的 path 就是影子目录），创建时复用它。没有任何影子会话时，面板说明该怎么做，而不是静默失败。
+- 新增 TC-CLIENT-012 至 015。
 ## [0.13.2] — 2026-11-06
 
 ### Fixed

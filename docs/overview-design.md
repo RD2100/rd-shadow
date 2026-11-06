@@ -111,7 +111,7 @@ D11 之前的任何失败是 `rejected`；D11 之后失去确认是 `unknown`。
 
 绑定 → 成员校验 → 读日志 → 折叠状态 → 渲染。全程不调用 `resolveAgent`。`shadow_inspect` 传 `replyAfterSeq`（投递回执里的 `inbox@` 序号）时，末尾附目标在那之后的最新回复全文，以及这一轮是否结束（ADR-012）。
 
-### 6.3 权限固定（host 半边）
+### 6.3 侧栏入口（client 半边）`n`n浏览器半边**不接收行配置**（ADR-016），所以影子工作区由"装着影子预设会话的工作区"识别；创建时复用该工作区。没有任何影子会话时，面板提示先用 preset 选择器建第一个。`n`n### 6.4 权限固定（host 半边）
 
 挂载时遍历已有会话，并监听 `session/created`：`cwd` 等于 `shadowDir` 的根会话被设为 `danger-full-access`；同目录的子代理被降为 `workspace-write`，审批 `never`（ADR-009）。监听器异常只记 warn，不影响其他会话创建。
 

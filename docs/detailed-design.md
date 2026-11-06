@@ -168,7 +168,14 @@ status==='running' → busy
 
 ### 3.10 client.js
 
-注入 `slots, locale, uiWorkspace, sessions, workspaces`；向 `sidebar.footer.action` 注册 `ShadowEntry`，暴露 `openShadow / createShadow / renameShadow / archiveShadow / shadowDir / presetId`。`createShadow`：`workspaces.create({path})` → 从多种返回形态中取 `workspaceId`（包括"已存在"拒绝里携带的实体）→ `sessions.create({workspaceId, agentPreset})` → 可选 `selectModel`（失败只记 console）→ 打开。`shadowDir` 必须由行配置给出，浏览器不推断默认值。
+独立 ModuleLoader bundle（`window.__ModuleLoader__.load`），不 import 任何模块。注入 `slots, locale, uiWorkspace, sessions, workspaces`；向 `sidebar.footer.action` 注册 `ShadowEntry`。
+
+**`apply(ctx, config)` 里的 `config` 恒为 `undefined`**：浏览器侧建条目用 `{name: id}`，启动清单不带 config（ADR-016，rc.3 源码三处互证）。所以：
+
+- 目录与 preset id 都取不到行配置；`presetId` 用 bundle 内的常量 `shadow`（TC-PATCH-004 锁定补丁行的 id 与此一致）。
+- `findShadowWorkspace(workspaces, sessions, archivedIds, presetId)`：在工作区里找带 `agentPreset === presetId` 且未归档的会话，取最多的那个工作区。工作区的 `sessionIds` 宿主侧已按 cwd 过滤，所以它的 path 就是影子目录。
+- `createShadow(selection, workspaceId?)`：用传入或自行发现的工作区建会话；两者都没有时，`shadowDir` 非空则 adopt，为空则抛 `no shadow workspace yet`。
+- slot 暴露 `{openShadow, createShadow, shadowDir, presetId, renameShadow, archiveShadow, shadowWorkspace}`。
 
 ## 4. 状态机
 

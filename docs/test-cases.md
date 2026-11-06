@@ -272,15 +272,19 @@
 | TC-DIR-006 | auto | comparison ignores separators, trailing slashes, and case | tests/shadow-dir.test.mjs |
 | TC-CLIENT-001 | auto | the bundle declares its loader id and both plugin exports | tests/client.test.mjs |
 | TC-CLIENT-002 | auto | apply registers the sidebar slot and the dictionaries | tests/client.test.mjs |
-| TC-CLIENT-003 | auto | the slot face exposes the five operations | tests/client.test.mjs |
+| TC-CLIENT-003 | auto | the slot face exposes the panel operations | tests/client.test.mjs |
 | TC-CLIENT-004 | auto | an already-registered workspace still creates a Session (the adopt fix) | tests/client.test.mjs |
 | TC-CLIENT-005 | auto | a bare workspace view is accepted too | tests/client.test.mjs |
 | TC-CLIENT-006 | auto | a result with no identity at all fails loudly | tests/client.test.mjs |
 | TC-CLIENT-007 | auto | a Session without an identity fails loudly | tests/client.test.mjs |
-| TC-CLIENT-008 | auto | a missing shadowDir is reported instead of adopted | tests/client.test.mjs |
+| TC-CLIENT-008 | auto | with no shadow workspace yet the panel says what to do | tests/client.test.mjs |
 | TC-CLIENT-009 | auto | a model pin failure does not block creation | tests/client.test.mjs |
 | TC-CLIENT-010 | auto | openShadow routes through the official navigation | tests/client.test.mjs |
 | TC-CLIENT-011 | auto | a missing navigation service is reported | tests/client.test.mjs |
+| TC-CLIENT-012 | auto | the shadow workspace is found through its own Sessions, not a path | tests/client.test.mjs |
+| TC-CLIENT-013 | auto | creating a conversation reuses the discovered workspace instead of adopting a path | tests/client.test.mjs |
+| TC-CLIENT-014 | auto | a workspace holding no shadow Session is not the shadow workspace | tests/client.test.mjs |
+| TC-CLIENT-015 | auto | archived shadow Sessions do not make a workspace the shadow workspace | tests/client.test.mjs |
 | TC-STAMP-001 | auto | the checkout produces a stamp | tests/build-stamp.test.mjs |
 | TC-STAMP-002 | auto | the stamp covers every runtime module | tests/build-stamp.test.mjs |
 | TC-STAMP-003 | auto | identical copies produce the same stamp | tests/build-stamp.test.mjs |
@@ -323,6 +327,6 @@
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
 
-合计 187：auto 173，todo 6，manual 8。
+合计 191：auto 177，todo 6，manual 8。
 
 <!-- TC-INDEX:END -->

@@ -19,6 +19,7 @@
 | 013 | 三层防护运行时漂移：`engines.dsh` + 读取时形状检查 + 真实日志探针 | Accepted | 0.13.0 |
 | 014 | 影子目录由环境变量 `DSH_SHADOW_DIR` 统一覆盖，不用 profile patch | Superseded by ADR-015 | 0.13.1 |
 | 015 | 变量改名 `SHADOW_DIR`，写在 `<DSH_HOME>/.env` | Accepted | 0.13.2 |
+| 016 | 浏览器半边按
 
 ## ADR-001 完全权限、无审批
 
@@ -129,6 +130,20 @@
 - **决策**：两行改读 `process.env.SHADOW_DIR`。设置方式写进 `<DSH_HOME>/.env`（本机 `D:\DSH\.DSH\.env`），它随 DSH 数据目录走，不依赖怎样启动 DSH。进程环境里的同名变量优先。
 - **防回退**：TC-PATCH-011 检查表达式只读一个变量，且不以上述前缀开头。
 - **测试**：TC-PATCH-007、010、011；端到端 TC-E2E-002。
+## ADR-016 浏览器半边不依赖行配置
+
+- **问题**：侧栏"影子"入口点了没反应。宿主日志：`create failed Error: no shadowDir configured on the plugin row`。
+- **根因**：**DSH 插件行的 `config` 从来到不了浏览器半边。**三处 rc.3 源码互证：
+  1. `dsh-client-modules/lib/client.js` 的 `create()` 用 `const options = { name: id }` 建条目；
+  2. 启动清单 `parseBootManifest` 只解析 `{id, url, rev, inject, external, immediately}`；
+  3. `graphRow()` 只从 `dsh.client` 声明取 `inject/immediately/external`，而该声明没有 config 字段。
+  
+  官方带浏览器半边的插件（`dsh-client-ui-*`）的 `apply(ctx)` 因此都不读 config。我们的 `client.js` 从 v0.1.0 起就假设配置能到，于是 `shadowDir` 一直是空字符串：面板列不出会话，也建不了会话。
+- **决策**：影子工作区改由**它自己的会话**识别。工作区的 `sessionIds` 在宿主侧已按 cwd 过滤，所以"装着用影子预设创建的会话的工作区"，其 path 就是影子目录。`lib/client.js` 的 `findShadowWorkspace()` 挑影子会话最多的那个（并列取注册顺序第一个，结果确定）；归档的会话不计入。创建新会话时复用这个工作区，不再走 adopt 路径。
+- **全新安装**（一个影子会话都没有）：浏览器无法向宿主要目录，面板显示"请先用影子预设新建一个对话"，并让用户用官方 preset 选择器建第一个。之后入口即可用。
+- **host 半边不变**：仍从行配置读 `shadowDir`，那是它唯一的真相来源。
+- **测试**：TC-CLIENT-012 至 015（含"别的预设不算""归档不算"）；TC-CLIENT-003 不再断言 `shadowDir` 出现在 slot 上。
+
 ---
 
 ## 未决问题
