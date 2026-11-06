@@ -44,9 +44,9 @@
 
 ## 配置
 
-`shadowDir` 是影子的身份：`cwd` 等于它的会话才是影子，才被固定权限并获得三个工具。默认 `<家目录>/dsh-shadow`。
+`shadowDir` 是影子的身份：`cwd` 等于它的会话才是影子，才被固定权限并获得三个工具。默认 `<家目录>/dsh-shadow`，设置了 `DSH_SHADOW_DIR` 时用它的值。
 
-**host 行（`shadow`）与 preset 内的 `shadow-tools` 行必须配置同一个 `shadowDir`。** 从 0.11.0 之前升级、想保留原来的影子目录时，必须在 profile 里显式覆盖这两行，否则既有影子会话不再被识别。步骤见 [运维手册 §4](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md)。
+**换影子目录用环境变量 `DSH_SHADOW_DIR`**，例如 `setx DSH_SHADOW_DIR "D:\DSH\shadow"`，然后完全重启 DSH。host 行和 preset 内的 `shadow-tools` 行都先读这个变量，所以两边总是一致。不要在 profile patch 里改 `shadowDir`：嵌在 preset 里的那一行改不到（[ADR-014](https://github.com/RD2100/rd-shadow/blob/main/docs/decisions.md)）。从 0.11.0 之前升级、想保留原来的影子目录时，按 [运维手册 §4](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md) 设置这个变量。
 
 启动后宿主日志应有这四行：
 

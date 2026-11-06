@@ -53,14 +53,16 @@
             name: '@deepseek-ai/dsh-tool-goal'
           # The shadow's dispatch tools live in an agent-scoped entry of this
           # package, so they exist only inside a shadow Session's agent scope
-          # (DISPATCH-SPEC.md §1). shadowDir must match the host row's value
-          # below: the tools refuse a caller outside that directory.
-          # DSH evaluates this expression on the current machine so the same
-          # absolute home-based directory reaches the host and browser halves.
+          # (docs/detailed-design.md §1). shadowDir must match the host row's
+          # value below: the tools refuse a caller outside that directory.
+          # DSH evaluates this expression on the current machine, so both rows
+          # resolve to the same absolute directory. Set DSH_SHADOW_DIR in the
+          # user environment to move the shadow without editing either row:
+          # a profile patch cannot reach this nested row (ADR-014).
           - id: shadow-tools
             name: 'dsh-plugin-shadow/tools'
             config:
-              shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
+              shadowDir: !!js process.env.DSH_SHADOW_DIR || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
           - id: planning
             name: cordis:group
             group: true
@@ -153,6 +155,6 @@
         # The shadow is pinned to full access; tool calls never wait on approvals.
         # Directory adopted as the shadow's own Workspace. Change it here rather
         # than editing the client bundle. Must equal the `shadow-tools` row's
-        # value above. The expression resolves to `<home>/dsh-shadow` on this
-        # machine and is shared with the browser half.
-        shadowDir: !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
+        # value above. The expression resolves to DSH_SHADOW_DIR when set, else
+        # `<home>/dsh-shadow`, and is shared with the browser half.
+        shadowDir: !!js process.env.DSH_SHADOW_DIR || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')

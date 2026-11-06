@@ -23,7 +23,7 @@ const PATCH = path.join(ROOT, 'cordis.patch.yml')
 const PACKAGE_NAME = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name
 
 /** Home-relative default evaluated by DSH's bundle loader on each machine. */
-const PATCH_SHADOW_DIR = "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')"
+const PATCH_SHADOW_DIR = "process.env.DSH_SHADOW_DIR || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')"
 
 /** Resolve the YAML parser from a module name or a filesystem path. */
 function yamlSpecifier() {
@@ -115,11 +115,21 @@ check('TC-PATCH-007', 'both rows name the same directory', () => {
   const tools = plugins.find((plugin) => plugin.id === 'shadow-tools')
   const host = byId.get('shadow')
   if (tools?.config?.shadowDir?.__js !== host?.config?.shadowDir?.__js) throw new Error('shadowDir drifted between rows')
-  const resolved = new Function('process', `return ${host.config.shadowDir.__js}`)(process)
-  const expected = process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
-  if (resolved !== expected) throw new Error(`shadowDir expression resolved to ${resolved}, expected ${expected}`)
+  const evaluate = (env) => new Function('process', `return ${host.config.shadowDir.__js}`)({ ...process, env, getBuiltinModule: process.getBuiltinModule })
+  const fallback = process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
+  if (evaluate({}) !== fallback) throw new Error(`without DSH_SHADOW_DIR the expression resolved to ${evaluate({})}, expected ${fallback}`)
 })
 
+check('TC-PATCH-010', 'DSH_SHADOW_DIR moves the shadow for both rows at once; an empty value falls back to the default (ADR-014)', () => {
+  const tools = plugins.find((plugin) => plugin.id === 'shadow-tools')
+  const host = byId.get('shadow')
+  const evaluate = (expr, env) => new Function('process', `return ${expr}`)({ ...process, env, getBuiltinModule: process.getBuiltinModule })
+  for (const row of [tools, host]) {
+    if (evaluate(row.config.shadowDir.__js, { DSH_SHADOW_DIR: 'D:\\DSH\\shadow' }) !== 'D:\\DSH\\shadow') throw new Error(`${row.id} ignores DSH_SHADOW_DIR`)
+    const fallback = process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
+    if (evaluate(row.config.shadowDir.__js, { DSH_SHADOW_DIR: '' }) !== fallback) throw new Error(`${row.id} does not fall back on an empty DSH_SHADOW_DIR`)
+  }
+})
 check('TC-PATCH-008', 'the win32 tool selection is still expressed as !!js', () => {
   const bash = plugins.find((plugin) => plugin.id === 'tool-bash')
   const pwsh = plugins.find((plugin) => plugin.id === 'tool-pwsh')

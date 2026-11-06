@@ -40,24 +40,22 @@ node scripts/fingerprint.mjs                         # 3. 记下期望构建戳
 
 现状（2026-11-06 核对）：宿主日志为 `shadow: directory C:\Users\25313\dsh-shadow`，该目录不存在；真正的影子工作区是 `D:\DSH\shadow`（20 个会话）。
 
-**需用户批准后执行。** 先备份 `D:\DSH\.DSH\profiles\desktop\cordis.patch.yml`，再在末尾追加 host 行覆盖（已知可行：profile patch 按 id 覆盖顶层行的 `config`）：
+**不要用 profile patch 改 `shadowDir`**（ADR-014）。已从 rc.3 加载器源码（`dsh-app-boot` 的 `applyEntryPatches`）核实：patch 只能按 id 命中顶层行和 group 里的行，`shadow-tools` 嵌在 `preset-shadow` 的 `plugins` 里，命中不了；覆盖 host 行的 `config` 是整体替换，会丢掉 `shadowPresetId`；覆盖整个 `preset-shadow` 会把 preset 冻结在 profile 里，插件以后改 preset 就不再生效。
 
-```yaml
-# 影子插件：保留 0.11.0 之前的影子目录（host 行与 shadow-tools 行必须一致）
-- id: shadow
-  config:
-    shadowDir: 'D:\DSH\shadow'
-```
+从 0.13.1 起两行都先读环境变量 `DSH_SHADOW_DIR`。步骤（**需用户批准；第 3 步会中断所有会话**）：
 
-`shadow-tools` 行嵌在 `preset-shadow` 的 `plugins` 列表里。**profile patch 如何覆盖嵌套行未经核验**，按顺序尝试：
+1. 设用户级环境变量（可逆）：
+   ```powershell
+   setx DSH_SHADOW_DIR "D:\DSH\shadow"
+   ```
+2. 把 0.13.1 同步进 profile：
+   ```sh
+   node scripts/sync.mjs --profile D:/DSH/.DSH/profiles/desktop
+   ```
+3. **完全退出** DSH（包括托盘图标）后重新打开。环境变量只对之后新启动的进程生效。
+4. 核对：TC-E2E-002（期望 `shadow: directory D:\DSH\shadow`，且 build 哈希等于 `node scripts/fingerprint.mjs`）、TC-E2E-003、TC-E2E-004。
 
-1. 顶层按 id 覆盖：`- id: shadow-tools` + `config.shadowDir: 'D:\DSH\shadow'`；
-2. 若无效，在 Web 设置页编辑影子 preset，把 `shadow-tools` 行的 `shadowDir` 改为同一路径（编辑器会把整份 `config.plugins` 写进 profile patch，见 `cordis.patch.yml` 顶部注释）。
-
-**核验方法**：重启后在影子目录的会话里调用 `shadow_targets`。若返回 `not-shadow (this Session (D:\DSH\shadow) is not the shadow)`，说明 host 行生效而 tools 行没有。
-
-然后执行 TC-E2E-002（期望 `shadow: directory D:\DSH\shadow`）和 TC-E2E-003。
-
+回退：`reg delete HKCU\Environment /v DSH_SHADOW_DIR /f`，再完全重启 DSH，影子目录回到 `<home>/dsh-shadow`。
 ## 5. DSH 更新之后：复核与放宽版本范围
 
 触发：§3 表里出现 `incompatible with dsh` 或 `runtime contract mismatch`，或你知道 DSH 刚更新过。

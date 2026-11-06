@@ -2,6 +2,15 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.13.1] — 2026-11-06
+
+### Fixed
+
+- 本机迁移影子目录的方法不可行：运维手册原先让你在 profile patch 里覆盖 host 行和 `shadow-tools` 行的 `shadowDir`。核对 rc.3 加载器源码后确认，嵌在 preset 里的 `shadow-tools` 行用 patch 命中不了，而覆盖 host 行会丢掉 `shadowPresetId`（ADR-014）。
+
+### Changed
+
+- 两行的 `shadowDir` 都先读环境变量 `DSH_SHADOW_DIR`，未设置或为空时仍是 `<home>/dsh-shadow`。换影子目录只需 `setx DSH_SHADOW_DIR "<目录>"` 并完全重启 DSH。新增 TC-PATCH-010。
 ## [0.13.0] — 2026-11-06
 
 两个缺口：影子读不到派出去的活的结果；DSH 自动更新后插件可能悄悄出错。

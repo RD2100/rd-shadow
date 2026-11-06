@@ -11,7 +11,7 @@
 | TASK-05 | 串行化器清理已结束的链 | 任意 | S | open |
 | TASK-06 | pack-check 输出子进程启动失败原因 | 任意 | XS | open |
 | TASK-07 | 英文 README 与中文 README 对齐 | 任意 | M | done（0.12 基线一并完成） |
-| TASK-08 | 修复本机 profile 的 `shadowDir` | **维护者，需用户批准** | XS | open |
+| TASK-08 | 修复本机影子目录（`DSH_SHADOW_DIR`） | **维护者，需用户批准** | XS | open |
 
 ---
 
@@ -81,9 +81,9 @@
 - **状态**：done（0.12 基线重写两份 README 时一并完成）。
 - **以后的规则**：改 `README.md` 时同一提交里改 `README.en.md`；两份的二级标题一一对应；指向 `docs/` 的链接用同一个仓库绝对 URL。
 
-## TASK-08 修复本机 profile 的 `shadowDir`
+## TASK-08 修复本机影子目录
 
-- **执行者**：维护者。**会改动正在运行的 DSH 配置并需要重启，必须先得到用户同意。** 便宜模型不得执行。
-- **前置**：未决问题 Q2 选 (a)。
+- **执行者**：维护者。**会改用户环境变量、同步 profile 并需要完全重启 DSH，必须先得到用户同意。** 便宜模型不得执行。
+- **前置**：ADR-011（保留旧目录）；0.13.1 已发布（两行都读 `DSH_SHADOW_DIR`，ADR-014）。
 - **步骤**：见 `operations.md` §4。
-- **验收**：E2E-002、E2E-003（`test-cases.md`）。
+- **验收**：TC-E2E-002、TC-E2E-003、TC-E2E-004。

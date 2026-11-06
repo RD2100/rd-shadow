@@ -17,6 +17,7 @@
 | 011 | 本机保留 `D:\DSH\shadow` 作为影子目录 | Accepted（待执行 TASK-08） | 0.12.0 |
 | 012 | `shadow_inspect` 加 `replyAfterSeq`：读目标的最新回复全文 | Accepted | 0.13.0 |
 | 013 | 三层防护运行时漂移：`engines.dsh` + 读取时形状检查 + 真实日志探针 | Accepted | 0.13.0 |
+| 014 | 影子目录由环境变量 `DSH_SHADOW_DIR` 统一覆盖，不用 profile patch | Accepted | 0.13.1 |
 
 ## ADR-001 完全权限、无审批
 
@@ -85,7 +86,7 @@
 ## ADR-011 本机保留旧影子目录
 
 - **决策人**：用户（2026-11-06，按建议）。保留 `D:\DSH\shadow` 的 20 个会话与台账，不迁移到 `<home>/dsh-shadow`。
-- 执行方式见 TASK-08 / `operations.md` §4。因为要改正在运行的 profile 并重启 DSH，执行前仍需用户确认时机。
+- 执行方式见 TASK-08 / `operations.md` §4（0.13.1 起改为环境变量，见 ADR-014）。因为要重启 DSH，执行前仍需用户确认时机。
 
 ## ADR-012 读取目标的回复
 
@@ -111,6 +112,15 @@
 - **为什么不只用第 2 层**：跨大版本时可能不只是字段改名，而是整套服务换掉；在加载阶段拒绝比运行时报错更早、更干净。
 - **测试**：TC-RTC-001 至 007、TC-INS-010、TC-DSP-026、TC-REG-002、TC-HOST-019；端到端 TC-E2E-006。
 
+## ADR-014 用环境变量移动影子目录
+
+- **背景**：ADR-011 决定本机保留 `D:\DSH\shadow`。`operations.md` 原先的做法是在 profile patch 里覆盖 host 行和 `shadow-tools` 行，其中嵌套行一项标着"未经核验"。
+- **核验结果**（rc.3 `dsh-app-boot` 的 `applyEntryPatches`）：
+  - patch 的 id 索引只收录顶层行和 `group` 行的子行。`shadow-tools` 在 `preset-shadow.config.plugins` 里，不是 group，打不中，加载器只打一条 `entry not found` 警告。
+  - 非 insert 的 patch 对目标行的字段做**整体赋值**：覆盖 host 行的 `config` 会丢掉 `shadowPresetId`；覆盖 `preset-shadow` 的 `config` 会把整份 preset 冻结在 profile 里，插件以后对 preset 的修改全部被遮住。
+- **决策**：两行的 `shadowDir` 表达式都改为 `process.env.DSH_SHADOW_DIR || <home>/dsh-shadow`。一个环境变量同时决定 host、tools、client 三处，profile patch 不再需要碰影子。空字符串视为未设置。
+- **后果**：环境变量在 DSH 进程启动时读取，改完必须完全重启 DSH。ADR-011 的执行方式改为 `operations.md` §4。
+- **测试**：TC-PATCH-007（未设置时回落到默认值）、TC-PATCH-010（设置后两行同时生效，空值回落）。
 ---
 
 ## 未决问题

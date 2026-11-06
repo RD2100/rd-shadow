@@ -44,9 +44,9 @@ Shadow Sessions are pinned to `danger-full-access` and tool calls never wait for
 
 ## Configuration
 
-`shadowDir` is the shadow's identity: only Sessions whose `cwd` equals it are the shadow, get the pinned permission, and see the three tools. Default: `<home>/dsh-shadow`.
+`shadowDir` is the shadow's identity: only Sessions whose `cwd` equals it are the shadow, get the pinned permission, and see the three tools. Default: `<home>/dsh-shadow`, or the value of `DSH_SHADOW_DIR` when set.
 
-**The host row (`shadow`) and the `shadow-tools` row inside the preset must name the same `shadowDir`.** When upgrading from before 0.11.0 and keeping the old shadow directory, override both rows in the profile, or existing shadow Sessions stop being recognized. See [operations §4](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md).
+**Move the shadow with the environment variable `DSH_SHADOW_DIR`**, e.g. `setx DSH_SHADOW_DIR "D:\DSH\shadow"`, then fully restart DSH. The host row and the `shadow-tools` row inside the preset both read it first, so they always agree. Do not change `shadowDir` in a profile patch: the row nested in the preset cannot be reached that way ([ADR-014](https://github.com/RD2100/rd-shadow/blob/main/docs/decisions.md)). When upgrading from before 0.11.0 and keeping the old shadow directory, set this variable as described in [operations §4](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md).
 
 After a start the host log should contain these four lines:
 
