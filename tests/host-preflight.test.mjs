@@ -211,4 +211,18 @@ check('TC-HOST-018', 'the subagent rule is announced in its own startup line', (
   assert.ok(lines.includes('info shadow: subagents of the shadow run in workspace-write with approvals rejected'), lines.join('\n'))
 })
 
+check('TC-HOST-019', 'a drifted permission service is named once and no Session is pinned', () => {
+  const { ctx, lines, applied, order } = makeCtx()
+  const inject = ctx.inject
+  ctx.inject = (required, callback) => inject(required, (scope) => {
+    delete scope.permissionPresets.set
+    callback(scope)
+  })
+  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  const warnings = lines.filter((line) => line.includes('runtime contract mismatch'))
+  assert.deepEqual(warnings, ['warn shadow: runtime contract mismatch (verified against dsh 0.2.1-rc.3): permissionPresets.set is not a function; shadow Sessions are not pinned'])
+  assert.deepEqual(applied, [])
+  assert.ok(!order.includes('on:session/created'), order.join(' -> '))
+})
+
 await done()

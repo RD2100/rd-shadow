@@ -11,7 +11,7 @@
 | 工具 | 作用 |
 |---|---|
 | `shadow_targets` | 列出工作区与会话：id、实时状态（`idle`/`cold`/`busy`）、归档与子代理标记、标题 |
-| `shadow_inspect` | 只读查看一个会话：状态、工作目录、当前模型、事件序号；可按 `afterSeq`/`limit` 分页读事件。不唤醒冷会话 |
+| `shadow_inspect` | 只读查看一个会话：状态、工作目录、当前模型、事件序号；可按 `afterSeq`/`limit` 分页读事件；传 `replyAfterSeq`（投递回执里的 `inbox@` 序号）可读到目标之后的最新回复全文，以及这一轮是否结束。不唤醒冷会话 |
 | `shadow_dispatch` | 向一个会话投递一条消息。消息带 `source={kind:'agent-message', form:'relay', senderSessionId}`，接收方日志能重建"是谁派来的" |
 
 投递是幂等的：同一次工具调用被重放，得到同一 message id，不会重复投递。想再发一次就重新调用。
@@ -32,7 +32,7 @@
 
 | 项 | 要求 |
 |---|---|
-| DSH | `dsh-desktop-next 2.0.20-next`（harness `0.2.1-rc.3`）。依赖该版本的内部服务契约，**不保证跨版本可用** |
+| DSH | harness `>=0.2.1-rc.3 <0.2.2`（在 `dsh-desktop-next 2.0.20-next` 上核验）。依赖内部服务契约：范围外的版本会被 DSH 加载器直接禁用；范围内若字段变了，工具返回 `runtime-mismatch` 而不是给出错误结果。DSH 更新后的复核见[运维手册 §5](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md) |
 | Node | `>= 22.19` |
 | profile | 带 GUI 的 web / desktop profile（本插件有浏览器半边） |
 
@@ -64,7 +64,7 @@ shadow: subagents of the shadow run in workspace-write with approvals rejected
 | 没有交互式审批 | 见"权限与安全" |
 | 只支持带 GUI 的 profile | client 半边需要浏览器环境 |
 | 改 `lib/*.js` 需要重启 DSH | HMR 不监视插件代码 |
-| 未做跨 DSH 版本兼容 | 见"要求" |
+| DSH 版本范围 | 见"要求"；DSH 自动更新出范围后插件会被禁用，直到发布新的核验版本 |
 
 ## 开发
 

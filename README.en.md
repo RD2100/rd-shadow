@@ -11,7 +11,7 @@ The shadow is **a DSH Session that lives in its own directory**, with three tool
 | Tool | Purpose |
 |---|---|
 | `shadow_targets` | List workspaces and Sessions: id, live state (`idle`/`cold`/`busy`), archived and subagent markers, title |
-| `shadow_inspect` | Read one Session without waking it: state, directory, current model, sequence numbers; optional event pages via `afterSeq`/`limit` |
+| `shadow_inspect` | Read one Session without waking it: state, directory, current model, sequence numbers; optional event pages via `afterSeq`/`limit`; pass `replyAfterSeq` (the `inbox@` number from a dispatch receipt) to read the target's latest reply in full and whether its turn has ended |
 | `shadow_dispatch` | Deliver one message to a Session. The message carries `source={kind:'agent-message', form:'relay', senderSessionId}`, so the receiver's log records who sent it |
 
 Delivery is idempotent: replaying the same tool call yields the same message id and never delivers twice. To send again, call again.
@@ -32,7 +32,7 @@ Shadow Sessions are pinned to `danger-full-access` and tool calls never wait for
 
 | Item | Requirement |
 |---|---|
-| DSH | `dsh-desktop-next 2.0.20-next` (harness `0.2.1-rc.3`). Depends on that version's internal service contracts; **no cross-version guarantee** |
+| DSH | harness `>=0.2.1-rc.3 <0.2.2` (verified on `dsh-desktop-next 2.0.20-next`). Depends on internal service contracts: versions outside the range are disabled by the DSH loader; inside the range, a changed field makes the tools answer `runtime-mismatch` instead of a wrong result. Re-verification after a DSH update: [operations §5](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md) |
 | Node | `>= 22.19` |
 | profile | A web / desktop profile with a GUI (the plugin has a browser half) |
 
@@ -64,7 +64,7 @@ shadow: subagents of the shadow run in workspace-write with approvals rejected
 | No interactive approval | See "Permissions and safety" |
 | GUI profiles only | The client half needs a browser |
 | Changing `lib/*.js` needs a DSH restart | HMR does not watch plugin code |
-| No cross-version DSH support | See "Requirements" |
+| DSH version range | See "Requirements"; after DSH auto-updates past the range the plugin is disabled until a re-verified release |
 
 ## Development
 

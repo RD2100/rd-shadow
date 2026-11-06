@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-shadow",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "private": false,
   "type": "module",
   "description": "Shadow coordinator: supervise work across your projects and dispatch messages to other Sessions, with explicit selection and audit-ready delivery receipts",
@@ -22,7 +22,8 @@
     "url": "https://github.com/RD2100/rd-shadow/issues"
   },
   "engines": {
-    "node": ">=22.19"
+    "node": ">=22.19",
+    "dsh": ">=0.2.1-rc.3 <0.2.2-0"
   },
   "main": "lib/index.js",
   "exports": {

@@ -233,7 +233,14 @@ function mount(world, options = {}) {
   const guards = []
   const sessionEvents = []
   const asked = []
+  const warnings = []
   const ctx = {
+    logger: {
+      info() {},
+      warn(message) {
+        warnings.push(message)
+      },
+    },
     tools: {
       register(definition) {
         registered.push(definition)
@@ -262,6 +269,8 @@ function mount(world, options = {}) {
     inject(services, callback) {
       const scope = world.services()
       for (const service of services) if (scope[service] === undefined) throw new Error(`missing service: ${service}`)
+      // A scenario can drift the host's shape to exercise the runtime contract check.
+      options.breakScope?.(scope)
       callback(scope)
     },
   }
@@ -274,6 +283,7 @@ function mount(world, options = {}) {
   tools.guards = guards
   tools.asked = asked
   tools.sessionEvents = sessionEvents
+  tools.warnings = warnings
   return tools
 }
 
@@ -710,5 +720,75 @@ await check('TC-TGT-005', 'catalog refuses a non-shadow caller', async () => {
 })
 
 todo('TC-TGT-006', 'a failed title read keeps ids and states and adds a titles: unavailable line (TASK-02)')
+
+/* ------------------------------------------------------------------ */
+/* Reply reading (ADR-012)                                             */
+/* ------------------------------------------------------------------ */
+
+await check('TC-INS-008', 'after a delivery, replyAfterSeq returns the target\'s answer and its ended turn', async () => {
+  const { world, target, tools, recordCall, caller } = scenario()
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'run the tests' }
+  const receipt = await tools.get('shadow_dispatch').execute(args, recordCall('call-1', args))
+  const inboxSeq = Number(/inbox@(\d+)/.exec(receipt)[1])
+  world.admit('target-1', { provider: 'p', model: 'm' })
+  target.append('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', id: 'a1', content: [{ type: 'reasoning', text: 'private' }, { type: 'tool-call', id: 't1', name: 'pwsh', arguments: '{}' }] } })
+  target.append('assistant/message', { turn: 1, step: 2, message: { role: 'assistant', id: 'a2', content: [{ type: 'text', text: 'all 12 tests pass' }] } })
+  target.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  const text = await tools.get('shadow_inspect').execute({ workspaceId: 'w1', sessionId: 'target-1', replyAfterSeq: inboxSeq }, { agent: caller, signal: new AbortController().signal })
+  assert.match(text, /^untrusted: /m)
+  assert.match(text, /2 assistant messages, 1 tool calls, 1 turns ended; last turn ended completed at seq \d+/)
+  assert.match(text, /reply text \(seq \d+; 17 chars\):\nall 12 tests pass$/)
+  assert.doesNotMatch(text, /private/)
+})
+
+await check('TC-INS-009', 'a target still mid-turn reports the turn as not ended and no reply yet', async () => {
+  const { target, tools, caller } = scenario({ targetLive: true })
+  target.append('user/message', { id: 'u1', role: 'user', content: [], source: { kind: 'user' } })
+  target.append('assistant/message', { turn: 1, step: 1, message: { role: 'assistant', id: 'a1', content: [{ type: 'tool-call', id: 't1', name: 'pwsh', arguments: '{}' }] } })
+  const text = await tools.get('shadow_inspect').execute({ workspaceId: 'w1', sessionId: 'target-1', replyAfterSeq: 0 }, { agent: caller, signal: new AbortController().signal })
+  assert.match(text, /1 assistant messages, 1 tool calls, 0 turns ended; last turn not ended/)
+  assert.match(text, /reply text: \(none yet\)$/)
+})
+
+/* ------------------------------------------------------------------ */
+/* Runtime contract (ADR-013)                                          */
+/* ------------------------------------------------------------------ */
+
+await check('TC-INS-010', 'a target log whose folded events drifted is reported as runtime-mismatch, not misread', async () => {
+  const { target, tools, caller } = scenario()
+  target.append('turn/end', { turn: 1, reason: 'completed' })
+  const text = await tools.get('shadow_inspect').execute({ workspaceId: 'w1', sessionId: 'target-1', replyAfterSeq: -1 }, { agent: caller, signal: new AbortController().signal })
+  assert.match(text, /^shadow_inspect -> runtime-mismatch/)
+  assert.match(text, /turn\/end: data\.reason\.kind is not a string/)
+  assert.match(text, /do not retry/)
+})
+
+await check('TC-DSP-026', 'dispatch refuses a drifted target log before anything is sent', async () => {
+  const { target, tools, recordCall } = scenario()
+  target.append('user/message', { role: 'user', content: [] })
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'hello' }
+  const text = await tools.get('shadow_dispatch').execute(args, recordCall('call-1', args))
+  assert.match(text, /^shadow_dispatch -> rejected/)
+  assert.match(text, /reason: runtime-mismatch \(events of target-1: #0 user\/message: data\.id is not a string; /)
+  assert.equal(target.events.filter((event) => event.type === 'agent/inbox/spliced').length, 0)
+})
+
+await check('TC-REG-002', 'a host missing a method the tools call refuses all three tools and warns once at mount', async () => {
+  const world = makeWorld()
+  world.addSession('shadow-1', SHADOW_DIR)
+  const target = world.addSession('target-1', 'D:\\work\\proj')
+  world.addWorkspace('w1', ['target-1'])
+  const tools = mount(world, { breakScope: (scope) => { delete scope.sessionQuery.readTitleSnapshots } })
+  const caller = world.goLive('shadow-1')
+  const exec = { agent: caller, signal: new AbortController().signal }
+  assert.equal(tools.warnings.length, 1)
+  assert.match(tools.warnings[0], /runtime contract mismatch \(verified against dsh 0\.2\.1-rc\.3\): sessionQuery\.readTitleSnapshots is not a function/)
+  assert.match(await tools.get('shadow_targets').execute({}, exec), /^shadow_targets -> runtime-mismatch/)
+  assert.match(await tools.get('shadow_inspect').execute({ workspaceId: 'w1', sessionId: 'target-1' }, exec), /^shadow_inspect -> runtime-mismatch/)
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'hello' }
+  world.sessions.get('shadow-1').append('tool/call', { turn: 1, step: 0, callId: 'c1', name: 'shadow_dispatch', arguments: JSON.stringify(args) })
+  assert.match(await tools.get('shadow_dispatch').execute(args, { ...exec, callId: 'c1', arguments: args }), /reason: runtime-mismatch/)
+  assert.equal(target.events.length, 0)
+})
 
 await done()

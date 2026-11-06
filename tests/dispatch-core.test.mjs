@@ -10,6 +10,7 @@ import {
   currentSelection, foldInbox, pendingUserWait, deliveryEvidence,
   decideTargetState, isReceivable, selectionMismatch,
   renderSelection, renderDispatchReceipt, renderInspection, summarizeEvent,
+  collectReply, UNTRUSTED_LINE,
 } from '../lib/dispatch-core.js'
 
 const { check, todo, done } = suite('dispatch-core')
@@ -306,6 +307,58 @@ check('TC-CORE-044', 'render: a long event summary is bounded', () => {
 })
 
 todo('TC-CORE-045', 'renderTargets prints the titles-unavailable line only when asked (TASK-02)')
-todo('TC-CORE-046', 'an inspection event page is introduced by the untrusted-data line (TASK-03)')
+check('TC-CORE-046', 'an inspection event page is introduced by the untrusted-data line (TASK-03)', () => {
+  const lines = renderInspection({ state: 'idle', target: 'w/t', probed: true, asOfSeq: 1, events: ['#1 x {}'], eventPage: { total: 1, afterSeq: 0, lastSeq: 1, limit: 20 } }).split('\n')
+  const marker = lines.indexOf(UNTRUSTED_LINE)
+  const page = lines.findIndex((line) => line.startsWith('events ('))
+  assert.ok(marker >= 0 && marker === page - 1, lines.join('\n'))
+  const bare = renderInspection({ state: 'idle', target: 'w/t', probed: true, asOfSeq: 1 })
+  assert.doesNotMatch(bare, /^untrusted:/m)
+})
 
+/* ---------- reply (ADR-012) ---------- */
+const replyLog = [
+  { seq: 5, type: 'agent/inbox/spliced', data: { target: 'next-turn', start: 0, inserted: [] } },
+  { seq: 6, type: 'user/message', data: { id: 'u1' } },
+  { seq: 7, type: 'assistant/message', data: { turn: 1, step: 1, message: { content: [{ type: 'reasoning', text: 'hidden' }, { type: 'tool-call', id: 't', name: 'pwsh', arguments: '{}' }, { type: 'text', text: 'checking' }] } } },
+  { seq: 8, type: 'assistant/message', data: { turn: 1, step: 2, message: { content: [{ type: 'text', text: 'done:' }, { type: 'text', text: 'tests pass' }] } } },
+  { seq: 9, type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+]
+check('TC-CORE-047', 'reply: the latest visible text wins; reasoning is hidden; tool calls are counted', () => {
+  const reply = collectReply({ events: replyLog, afterSeq: 5 })
+  assert.equal(reply.messages, 2)
+  assert.equal(reply.toolCalls, 1)
+  assert.equal(reply.turnsEnded, 1)
+  assert.deepEqual(reply.lastTurnEnd, { seq: 9, kind: 'completed' })
+  assert.deepEqual(reply.latest, { seq: 8, text: 'done:\ntests pass', chars: 16, truncated: false, interrupted: false })
+})
+check('TC-CORE-048', 'reply: events at or before afterSeq are ignored', () => {
+  const after8 = collectReply({ events: replyLog, afterSeq: 8 })
+  assert.equal(after8.messages, 0)
+  assert.equal(after8.latest, null)
+  assert.deepEqual(after8.lastTurnEnd, { seq: 9, kind: 'completed' })
+  const after9 = collectReply({ events: replyLog, afterSeq: 9 })
+  assert.deepEqual([after9.messages, after9.turnsEnded, after9.lastTurnEnd, after9.latest], [0, 0, null, null])
+})
+check('TC-CORE-049', 'reply: long text is cut to maxChars; interrupted and errored turns are reported', () => {
+  const events = [
+    { seq: 1, type: 'assistant/message', data: { interrupted: true, message: { content: [{ type: 'text', text: 'x'.repeat(50) }] } } },
+    { seq: 2, type: 'turn/end', data: { reason: { kind: 'error', error: { message: 'quota exceeded', code: 'QUOTA' } } } },
+  ]
+  const reply = collectReply({ events, afterSeq: 0, maxChars: 10 })
+  assert.deepEqual(reply.latest, { seq: 1, text: 'x'.repeat(10), chars: 50, truncated: true, interrupted: true })
+  assert.deepEqual(reply.lastTurnEnd, { seq: 2, kind: 'error', error: 'quota exceeded' })
+})
+check('TC-CORE-050', 'render: a reply block is marked untrusted, summarized, and ends with the text', () => {
+  const text = renderInspection({ state: 'idle', target: 'w/t', probed: true, asOfSeq: 9, reply: { afterSeq: 5, ...collectReply({ events: replyLog, afterSeq: 5 }) } })
+  assert.ok(text.includes(`${UNTRUSTED_LINE}\nreply after seq 5: 2 assistant messages, 1 tool calls, 1 turns ended; last turn ended completed at seq 9\nreply text (seq 8; 16 chars):\ndone:\ntests pass`), text)
+  assert.ok(text.endsWith('tests pass'))
+})
+check('TC-CORE-051', 'render: truncation, interruption, an errored turn, and an empty reply are spelled out', () => {
+  const cut = renderInspection({ state: 'idle', target: 'w/t', reply: { afterSeq: 0, messages: 1, toolCalls: 0, turnsEnded: 1, lastTurnEnd: { seq: 2, kind: 'error', error: 'quota exceeded' }, latest: { seq: 1, text: 'xx', chars: 50, truncated: true, interrupted: true } } })
+  assert.match(cut, /last turn ended error at seq 2 \(quota exceeded\)/)
+  assert.match(cut, /reply text \(seq 1; 50 chars; truncated to the first 2; interrupted\):\nxx$/)
+  const empty = renderInspection({ state: 'busy', target: 'w/t', reply: { afterSeq: 3, messages: 0, toolCalls: 0, turnsEnded: 0, lastTurnEnd: null, latest: null } })
+  assert.match(empty, /last turn not ended \(the target may still be working\)\nreply text: \(none yet\)$/)
+})
 await done()

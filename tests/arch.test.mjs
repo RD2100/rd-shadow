@@ -25,6 +25,8 @@ const LAYERS = {
   'core-admission.js': 'core',
   'core-render.js': 'core',
   'core-serial.js': 'core',
+  'core-shape.js': 'core',
+  'core-reply.js': 'core',
   'shadow-dir.js': 'support',
   'build-stamp.js': 'support',
   'dispatch-core.js': 'barrel',
@@ -44,7 +46,7 @@ const ALLOWED = {
   barrel: { layers: ['core'], bare: [] },
   'host-io': { layers: ['core', 'support'], bare: [] },
   op: { layers: ['core'], bare: [] },
-  'entry-host': { layers: ['support'], bare: [] },
+  'entry-host': { layers: ['support', 'core'], bare: [] },
   'entry-tools': { layers: ['core', 'support', 'host-io', 'op'], bare: ['@deepseek-ai/dsh-tools'] },
   client: { layers: [], bare: [] },
 }

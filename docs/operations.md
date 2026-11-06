@@ -32,6 +32,8 @@ node scripts/fingerprint.mjs                         # 3. 记下期望构建戳
 | `shadow: this runtime lacks …` | 宿主版本与 rc.3 不符 | 不要继续使用；按 `detailed-design.md` §7 复核契约 |
 | `shadow: build <hash>` 与 fingerprint 不同 | 宿主跑的是旧副本 | 重新 sync 并重启 |
 | `shadow: directory <路径>` 不是你期望的目录 | profile 未覆盖 `shadowDir` | §4 |
+| `Plugin dsh-plugin-shadow@… is incompatible with dsh …` | DSH 自动更新到了 `engines.dsh` 范围外的版本，加载器禁用了插件（ADR-013 第 1 层） | §5 |
+| `shadow: runtime contract mismatch …` 或工具返回 `runtime-mismatch` | 范围内的版本改了插件读的字段（第 2 层） | §5；**不要**豁免，先修插件 |
 | 影子会话里没有 `shadow_*` 工具 | 会话不在 `shadowDir`，或 preset 不是 `shadow` | 检查会话 cwd 与 preset |
 
 ## 4. 本机修复：保留 `D:\DSH\shadow` 作为影子目录（TASK-08）
@@ -56,7 +58,26 @@ node scripts/fingerprint.mjs                         # 3. 记下期望构建戳
 
 然后执行 TC-E2E-002（期望 `shadow: directory D:\DSH\shadow`）和 TC-E2E-003。
 
-## 5. 发布清单
+## 5. DSH 更新之后：复核与放宽版本范围
+
+触发：§3 表里出现 `incompatible with dsh` 或 `runtime contract mismatch`，或你知道 DSH 刚更新过。
+
+```sh
+cd D:\DSH\shadow-plugin
+node scripts/contract-probe.mjs --home D:\DSH\.DSH --limit 30 --asar "C:\Program Files\DSH NEXT\resources\app.asar"
+```
+
+输出第二行是已安装的运行时版本，之后每份日志一行 `ok` 或 `FAIL`。
+
+| 结果 | 处理 |
+|---|---|
+| 版本在 `engines.dsh` 范围内，全部 `ok` | 插件能用。若出现过 `runtime-mismatch`，看它点名的是哪个服务方法，再按 `detailed-design.md` §7 核对 |
+| 版本在范围外，全部 `ok` | 形状没变。按 `detailed-design.md` §7 的表逐项核对服务方法（用 asar 只读查看），确认后：改 `lib/core-contract.js` 的 `VERIFIED_RUNTIME` 与 `package.json` 的 `engines.dsh`（两者由 TC-RTC-006 绑定），跑 `node tests/run.mjs`，发布新版本 |
+| 有 `FAIL` | 形状变了。按探针点名的字段更新 `core-shape.js`、相关 fold 和 `tests/tools-sim.mjs` 的替身，再更新 §7 |
+
+**临时继续使用**（明知风险）：`dsh plugin allow-version`，或插件管理器里对 `dsh-plugin-shadow@<版本>` 在当前 dsh 版本上做精确豁免。即使豁免了，第 2 层的形状检查仍然生效。
+
+## 6. 发布清单
 
 1. `SHADOW_STRICT_TODO=1 node tests/run.mjs` 通过（无 todo 遗留），或在 CHANGELOG 中说明保留的 todo
 2. 在没有沙箱限制的终端里 `node scripts/pack-check.mjs` 通过
