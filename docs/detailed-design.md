@@ -308,6 +308,7 @@ read one target exactly with shadow_inspect; deliver with shadow_dispatch.
 | 事件形状（`core-shape.js` 检查的字段） | `agent/inbox/spliced{target:string, start:int, inserted:array}`、`user/message{id:string}`、`request/header{header.config:object}`、`tool/call{callId:string, name:string}`、`assistant/message{message.content:array}`（块 `text{text}` / `reasoning{text}` / `tool-call{id,name,arguments}`；中断时 `interrupted:true`）、`turn/end{reason.kind}`（`completed` / `aborted` / `error{error.message,code}` / `blocked` / `max-tokens`）。2026-11-06 用本机 30 份真实日志核对通过 |
 | 版本门 | `dsh-app-boot` 的 `evaluatePluginCompatibility`：插件 `engines.dsh` 不满足时加载器禁用该插件并打印 `Plugin … is incompatible with dsh …`；可用 `dsh plugin allow-version` 或插件管理器对精确版本豁免 |
 | profile patch | 按 id 命中顶层行与 group 的子行；对目标行字段整体赋值，不做深合并；preset 的 `config.plugins` 里的行**命中不了**（ADR-014） |
+| 环境变量来源 | 桌面宿主启动时 `loadLayeredEnv`：进程环境 > 当前目录 `.env` > `<DSH_HOME>/.env`，不覆盖已有值；`.env` 里 `DSH_`/`XDG_`/`DYLD_`/`BASH_FUNC_` 前缀与一批引导变量会**抛错并阻止启动**（ADR-015） |
 | 子代理继承 | `dsh-subagent` 在 setup 阶段把父会话的 `danger-full-access` 与 `approval/policy=never` 写进子会话；`session/created` 在 setup 之后触发；官方 `pinInitialPermission` 不覆盖已有 `sandbox/mode` |
 | 模块解析 | `@deepseek-ai/dsh-tools` 由 DSH loader 注册表提供，**不得**写进 `package.json` |
 

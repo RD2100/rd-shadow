@@ -2,6 +2,16 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [0.13.2] — 2026-11-06
+
+### Fixed
+
+- 0.13.1 的 `DSH_SHADOW_DIR` 在本机没有生效：`setx` 写进了注册表，但完全重启后的 DSH 进程没有继承它。而且这个名字不能改写进 DSH 的 `.env`：DSH 拒绝 `.env` 里以 `DSH_` 开头的变量，会直接起不来（ADR-015）。
+
+### Changed
+
+- 两行的 `shadowDir` 改读 `SHADOW_DIR`，推荐写在 `<DSH_HOME>/.env`。不再读取 `DSH_SHADOW_DIR`。
+- 新增 TC-PATCH-011：变量名不得带 DSH 拒绝的前缀。
 ## [0.13.1] — 2026-11-06
 
 ### Fixed

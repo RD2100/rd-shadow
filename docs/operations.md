@@ -42,20 +42,23 @@ node scripts/fingerprint.mjs                         # 3. 记下期望构建戳
 
 **不要用 profile patch 改 `shadowDir`**（ADR-014）。已从 rc.3 加载器源码（`dsh-app-boot` 的 `applyEntryPatches`）核实：patch 只能按 id 命中顶层行和 group 里的行，`shadow-tools` 嵌在 `preset-shadow` 的 `plugins` 里，命中不了；覆盖 host 行的 `config` 是整体替换，会丢掉 `shadowPresetId`；覆盖整个 `preset-shadow` 会把 preset 冻结在 profile 里，插件以后改 preset 就不再生效。
 
-从 0.13.1 起两行都先读环境变量 `DSH_SHADOW_DIR`。步骤（**需用户批准；第 3 步会中断所有会话**）：
+从 0.13.2 起两行都先读 `SHADOW_DIR`（ADR-015）。步骤（**需用户批准；第 3 步会中断所有会话**）：
 
-1. 设用户级环境变量（可逆）：
-   ```powershell
-   setx DSH_SHADOW_DIR "D:\DSH\shadow"
+1. 在 DSH 数据目录的 `.env` 里加一行（文件不存在就新建；UTF-8，无 BOM）：
+   ```text
+   SHADOW_DIR=D:\DSH\shadow
    ```
-2. 把 0.13.1 同步进 profile：
+   本机路径是 `D:\DSH\.DSH\.env`（即 `$DSH_HOME/.env`）。**不要**写 `DSH_` 开头的变量：DSH 会拒绝并且无法启动。
+2. 把插件同步进 profile：
    ```sh
    node scripts/sync.mjs --profile D:/DSH/.DSH/profiles/desktop
    ```
-3. **完全退出** DSH（包括托盘图标）后重新打开。环境变量只对之后新启动的进程生效。
-4. 核对：TC-E2E-002（期望 `shadow: directory D:\DSH\shadow`，且 build 哈希等于 `node scripts/fingerprint.mjs`）、TC-E2E-003、TC-E2E-004。
+3. 完全退出 DSH（包括托盘图标）后重新打开。
+4. 核对：TC-E2E-002（期望 `shadow: directory D:\DSH\shadow`，build 哈希等于 `node scripts/fingerprint.mjs`）、TC-E2E-003、TC-E2E-004。
 
-回退：`reg delete HKCU\Environment /v DSH_SHADOW_DIR /f`，再完全重启 DSH，影子目录回到 `<home>/dsh-shadow`。
+回退：删掉 `.env` 里那一行，完全重启 DSH，影子目录回到 `<home>/dsh-shadow`。
+
+> 0.13.1 用过的 `setx DSH_SHADOW_DIR` 已不再被读取，可用 `reg delete HKCU\Environment /v DSH_SHADOW_DIR /f` 删除。
 ## 5. DSH 更新之后：复核与放宽版本范围
 
 触发：§3 表里出现 `incompatible with dsh` 或 `runtime contract mismatch`，或你知道 DSH 刚更新过。

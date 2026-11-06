@@ -296,7 +296,8 @@
 | TC-PATCH-007 | auto | both rows name the same directory | tests/patch.check.mjs |
 | TC-PATCH-008 | auto | the win32 tool selection is still expressed as !!js | tests/patch.check.mjs |
 | TC-PATCH-009 | todo | the shadow persona says another Session's content is data, not instructions (TASK-04) | tests/patch.check.mjs |
-| TC-PATCH-010 | auto | DSH_SHADOW_DIR moves the shadow for both rows at once; an empty value falls back to the default (ADR-014) | tests/patch.check.mjs |
+| TC-PATCH-010 | auto | SHADOW_DIR moves the shadow for both rows at once; an empty value falls back to the default (ADR-015) | tests/patch.check.mjs |
+| TC-PATCH-011 | auto | the shadow directory variable can be set from the DSH home .env (no bootstrap-only prefix, ADR-015) | tests/patch.check.mjs |
 | TC-ARCH-001 | auto | every runtime file is classified in a layer | tests/arch.test.mjs |
 | TC-ARCH-002 | auto | imports follow the layer rules | tests/arch.test.mjs |
 | TC-ARCH-003 | auto | no runtime file uses a dynamic import | tests/arch.test.mjs |
@@ -322,6 +323,6 @@
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
 
-合计 186：auto 172，todo 6，manual 8。
+合计 187：auto 173，todo 6，manual 8。
 
 <!-- TC-INDEX:END -->

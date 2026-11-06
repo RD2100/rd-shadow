@@ -17,7 +17,8 @@
 | 011 | 本机保留 `D:\DSH\shadow` 作为影子目录 | Accepted（待执行 TASK-08） | 0.12.0 |
 | 012 | `shadow_inspect` 加 `replyAfterSeq`：读目标的最新回复全文 | Accepted | 0.13.0 |
 | 013 | 三层防护运行时漂移：`engines.dsh` + 读取时形状检查 + 真实日志探针 | Accepted | 0.13.0 |
-| 014 | 影子目录由环境变量 `DSH_SHADOW_DIR` 统一覆盖，不用 profile patch | Accepted | 0.13.1 |
+| 014 | 影子目录由环境变量 `DSH_SHADOW_DIR` 统一覆盖，不用 profile patch | Superseded by ADR-015 | 0.13.1 |
+| 015 | 变量改名 `SHADOW_DIR`，写在 `<DSH_HOME>/.env` | Accepted | 0.13.2 |
 
 ## ADR-001 完全权限、无审批
 
@@ -86,7 +87,7 @@
 ## ADR-011 本机保留旧影子目录
 
 - **决策人**：用户（2026-11-06，按建议）。保留 `D:\DSH\shadow` 的 20 个会话与台账，不迁移到 `<home>/dsh-shadow`。
-- 执行方式见 TASK-08 / `operations.md` §4（0.13.1 起改为环境变量，见 ADR-014）。因为要重启 DSH，执行前仍需用户确认时机。
+- 执行方式见 TASK-08 / `operations.md` §4（0.13.2 起写 `<DSH_HOME>/.env`，见 ADR-015）。因为要重启 DSH，执行前仍需用户确认时机。
 
 ## ADR-012 读取目标的回复
 
@@ -121,6 +122,13 @@
 - **决策**：两行的 `shadowDir` 表达式都改为 `process.env.DSH_SHADOW_DIR || <home>/dsh-shadow`。一个环境变量同时决定 host、tools、client 三处，profile patch 不再需要碰影子。空字符串视为未设置。
 - **后果**：环境变量在 DSH 进程启动时读取，改完必须完全重启 DSH。ADR-011 的执行方式改为 `operations.md` §4。
 - **测试**：TC-PATCH-007（未设置时回落到默认值）、TC-PATCH-010（设置后两行同时生效，空值回落）。
+## ADR-015 用 `<DSH_HOME>/.env` 里的 `SHADOW_DIR`
+
+- **背景**：0.13.1 按 ADR-014 用 `setx DSH_SHADOW_DIR` 设置用户环境变量。完全重启后宿主日志仍是 `shadow: directory C:\Users\25313\dsh-shadow`：新的 DSH 进程没有继承这个变量（它的父进程不是重新读取了注册表的 Explorer）。系统环境变量要靠"由谁启动 DSH"才能传到，不可靠。
+- **核验**（rc.3 源码）：桌面宿主 `lib/host.js` 启动时调用 `dsh-app-boot` 的 `loadLayeredEnv`，按"已继承的进程环境 > 当前目录 `.env` > `<DSH_HOME>/.env`"合并，已有的变量不覆盖。但 `isBootstrapOnly` 拒绝 `.env` 里以 `DSH_`、`XDG_`、`DYLD_`、`BASH_FUNC_` 开头的变量，**而且是抛错，DSH 会起不来**。所以 `DSH_SHADOW_DIR` 不能写进 `.env`。
+- **决策**：两行改读 `process.env.SHADOW_DIR`。设置方式写进 `<DSH_HOME>/.env`（本机 `D:\DSH\.DSH\.env`），它随 DSH 数据目录走，不依赖怎样启动 DSH。进程环境里的同名变量优先。
+- **防回退**：TC-PATCH-011 检查表达式只读一个变量，且不以上述前缀开头。
+- **测试**：TC-PATCH-007、010、011；端到端 TC-E2E-002。
 ---
 
 ## 未决问题

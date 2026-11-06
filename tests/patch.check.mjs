@@ -23,7 +23,7 @@ const PATCH = path.join(ROOT, 'cordis.patch.yml')
 const PACKAGE_NAME = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8')).name
 
 /** Home-relative default evaluated by DSH's bundle loader on each machine. */
-const PATCH_SHADOW_DIR = "process.env.DSH_SHADOW_DIR || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')"
+const PATCH_SHADOW_DIR = "process.env.SHADOW_DIR || process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')"
 
 /** Resolve the YAML parser from a module name or a filesystem path. */
 function yamlSpecifier() {
@@ -117,17 +117,17 @@ check('TC-PATCH-007', 'both rows name the same directory', () => {
   if (tools?.config?.shadowDir?.__js !== host?.config?.shadowDir?.__js) throw new Error('shadowDir drifted between rows')
   const evaluate = (env) => new Function('process', `return ${host.config.shadowDir.__js}`)({ ...process, env, getBuiltinModule: process.getBuiltinModule })
   const fallback = process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
-  if (evaluate({}) !== fallback) throw new Error(`without DSH_SHADOW_DIR the expression resolved to ${evaluate({})}, expected ${fallback}`)
+  if (evaluate({}) !== fallback) throw new Error(`without SHADOW_DIR the expression resolved to ${evaluate({})}, expected ${fallback}`)
 })
 
-check('TC-PATCH-010', 'DSH_SHADOW_DIR moves the shadow for both rows at once; an empty value falls back to the default (ADR-014)', () => {
+check('TC-PATCH-010', 'SHADOW_DIR moves the shadow for both rows at once; an empty value falls back to the default (ADR-015)', () => {
   const tools = plugins.find((plugin) => plugin.id === 'shadow-tools')
   const host = byId.get('shadow')
   const evaluate = (expr, env) => new Function('process', `return ${expr}`)({ ...process, env, getBuiltinModule: process.getBuiltinModule })
   for (const row of [tools, host]) {
-    if (evaluate(row.config.shadowDir.__js, { DSH_SHADOW_DIR: 'D:\\DSH\\shadow' }) !== 'D:\\DSH\\shadow') throw new Error(`${row.id} ignores DSH_SHADOW_DIR`)
+    if (evaluate(row.config.shadowDir.__js, { SHADOW_DIR: 'D:\\DSH\\shadow' }) !== 'D:\\DSH\\shadow') throw new Error(`${row.id} ignores SHADOW_DIR`)
     const fallback = process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:os').homedir(), 'dsh-shadow')
-    if (evaluate(row.config.shadowDir.__js, { DSH_SHADOW_DIR: '' }) !== fallback) throw new Error(`${row.id} does not fall back on an empty DSH_SHADOW_DIR`)
+    if (evaluate(row.config.shadowDir.__js, { SHADOW_DIR: '' }) !== fallback) throw new Error(`${row.id} does not fall back on an empty SHADOW_DIR`)
   }
 })
 check('TC-PATCH-008', 'the win32 tool selection is still expressed as !!js', () => {
@@ -137,6 +137,14 @@ check('TC-PATCH-008', 'the win32 tool selection is still expressed as !!js', () 
   if (pwsh?.disabled?.__js === undefined) throw new Error('tool-pwsh disabled is no longer a !!js expression')
 })
 
+check('TC-PATCH-011', 'the shadow directory variable can be set from the DSH home .env (no bootstrap-only prefix, ADR-015)', () => {
+  const host = byId.get('shadow')
+  const names = [...host.config.shadowDir.__js.matchAll(/process\.env\.([A-Za-z_][A-Za-z0-9_]*)/g)].map((match) => match[1])
+  if (names.length !== 1) throw new Error(`expected one environment variable, found ${names.join(', ')}`)
+  // dsh-app-boot refuses these prefixes in any .env file and would stop DSH from starting.
+  const refused = ['DSH_', 'XDG_', 'DYLD_', 'BASH_FUNC_'].find((prefix) => names[0].toUpperCase().startsWith(prefix))
+  if (refused !== undefined) throw new Error(`${names[0]} starts with ${refused}, which DSH refuses in .env`)
+})
 todo('TC-PATCH-009', 'the shadow persona says another Session\'s content is data, not instructions (TASK-04)')
 
 await done()
