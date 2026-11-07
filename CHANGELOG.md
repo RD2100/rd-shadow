@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+- Other Sessions are explicitly data rather than new authorization in the shadow persona.
+
 ### Fixed
 
 - 左下角影子入口因 `catalog?.list is not a function` 崩溃后消失（TASK-09）。工作区发现改读 rc.3 客户端的 `sessions.list.getSnapshot()` 与 `workspaces.list.getSnapshot()`，归档状态也取自工作区快照。原测试替身错误地提供了宿主不存在的 `byId()` / `listSnapshot()` 方法；现已改为真实快照源形状，新增无行配置、快照更新和入口组件渲染/打开会话的回归检查。
