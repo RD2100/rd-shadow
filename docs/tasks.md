@@ -8,7 +8,7 @@
 | TASK-02 | 标题读取失败时在目录输出中说明 | 本会话 | S | done（本批提交） |
 | TASK-03 | 检查事件页加不可信数据标记 | 任意 | S | done（0.13.0 随 ADR-012） |
 | TASK-04 | persona 说明别的会话内容是数据 | 本会话 | XS | done（59e3869） |
-| TASK-05 | 串行化器清理已结束的链 | 任意 | S | open |
+| TASK-05 | 串行化器清理已结束的链 | 本会话 | S | done（本批提交） |
 | TASK-06 | pack-check 输出子进程启动失败原因 | 任意 | XS | open |
 | TASK-07 | 英文 README 与中文 README 对齐 | 任意 | M | done（0.12 基线一并完成） |
 | TASK-08 | 修复本机影子目录（`SHADOW_DIR`） | **维护者，需用户批准** | XS | open |
@@ -74,7 +74,7 @@
 ## TASK-05 串行化器清理已结束的链
 
 - **问题**：`core-serial.js` 的 `chains` Map 每个投递过的目标留一条，影子会话活多久就涨多久。
-- **允许修改的文件**：`lib/core-serial.js`、`tests/ops.test.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§3.6）
+- **允许修改的文件**：`lib/core-serial.js`、`tests/ops.test.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§3.6）、`docs/tasks.md`
 - **实现要求**：`run` 里把尾部 promise 存为 `tail`；`tail` 结束时，若 `chains.get(key) === tail` 则 `chains.delete(key)`。不得改变 TC-OPS-001 至 003 的行为。
 - **验收用例**：TC-OPS-004：
   1. `run('t', op)` 完成后，等待一次 `await new Promise((r) => setImmediate(r))`，`size()` 为 0；

@@ -74,7 +74,7 @@
 ### TC-OPS-004 串行化器清理已结束的链
 - 层级：op 单元　关联：TASK-05
 - 步骤与期望：见 `tasks.md` TASK-05
-- 状态：todo
+- 状态：auto
 
 ### TC-PACK-009 子进程启动失败时说明原因
 - 层级：打包　关联：TASK-06
@@ -189,7 +189,7 @@
 | TC-OPS-001 | auto | operations on one key run strictly in order | tests/ops.test.mjs |
 | TC-OPS-002 | auto | a rejected operation does not block the next one on its key | tests/ops.test.mjs |
 | TC-OPS-003 | auto | different keys do not wait on each other | tests/ops.test.mjs |
-| TC-OPS-004 | todo | a settled chain is pruned so size() returns to 0 (TASK-05) | tests/ops.test.mjs |
+| TC-OPS-004 | auto | settled chains are pruned without deleting a newer tail (TASK-05) | tests/ops.test.mjs |
 | TC-OPS-005 | auto | inspection page size defaults, truncates, and clamps | tests/ops.test.mjs |
 | TC-OPS-006 | auto | catalog page size defaults, truncates, and clamps | tests/ops.test.mjs |
 | TC-OPS-007 | auto | title collection keeps fulfilled titles and skips rejected or malformed entries | tests/ops.test.mjs |
@@ -332,6 +332,6 @@
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
 
-合计 196：auto 187，todo 1，manual 8。
+合计 196：auto 188，todo 0，manual 8。
 
 <!-- TC-INDEX:END -->

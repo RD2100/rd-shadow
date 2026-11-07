@@ -113,7 +113,7 @@ status==='running' → busy
 
 ### 3.6 core-serial.js
 
-`createSerializer()` → `{run(key, op), size()}`。同 key 严格先后；前一个失败不阻塞后一个；不同 key 互不等待。当前已结束的链不会被删除（TASK-05）。
+`createSerializer()` → `{run(key, op), size()}`。同 key 严格先后；前一个失败不阻塞后一个；不同 key 互不等待。链结束后仅在 Map 尾部仍是该链时删除；旧操作不能删掉后续操作，成功/失败均清理，原结果不变。
 
 ### 3.6a core-reply.js
 

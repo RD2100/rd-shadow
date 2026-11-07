@@ -48,7 +48,23 @@ await check('TC-OPS-003', 'different keys do not wait on each other', async () =
   await blocked
 })
 
-todo('TC-OPS-004', 'a settled chain is pruned so size() returns to 0 (TASK-05)')
+await check('TC-OPS-004', 'settled chains are pruned without deleting a newer tail (TASK-05)', async () => {
+  const serial = createSerializer()
+  assert.equal(await serial.run('t', async () => 42), 42)
+  await new Promise(setImmediate)
+  assert.equal(serial.size(), 0)
+  const gate = deferred()
+  const first = serial.run('t', async () => 'first')
+  const second = serial.run('t', () => gate.promise)
+  await first
+  await new Promise(setImmediate)
+  assert.equal(serial.size(), 1)
+  gate.resolve('second')
+  assert.equal(await second, 'second')
+  await assert.rejects(serial.run('bad', () => { throw new Error('boom') }), /boom/)
+  await new Promise(setImmediate)
+  assert.equal(serial.size(), 0)
+})
 
 check('TC-OPS-005', 'inspection page size defaults, truncates, and clamps', () => {
   assert.equal(inspectPageLimit(undefined), INSPECT_PAGE_DEFAULT)
