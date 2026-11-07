@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { suite } from './harness.mjs'
+import { summarizeEvent } from '../lib/core-render.js'
 import { pageReply } from '../lib/core-reply-page.js'
 import { collectReply } from '../lib/core-reply.js'
 import { collectDeliveryReply } from '../lib/core-delivery.js'
@@ -99,5 +100,40 @@ check('TC-REPLY-010', 'empty and exact-boundary replies are bounded and hide rea
   assert.equal(r.page.more, false)
   assert.equal(r.page.nextCursor, null)
   assert.equal(r.latest.text.length, 8000)
+})
+check('TC-REPLY-011', 'page edges do not split emoji or combining marks; giant clusters remain bounded', () => {
+  const args = { workspaceId: 'w', sessionId: 's', snapshotSeq: 1, afterSeq: 0 }
+  for (const tail of ['😀', 'e\u0301', '👨‍👩‍👧‍👦']) {
+    const events = [answer(1, 1, 'x'.repeat(7999) + tail + 'z')]
+    const first = pageReply({ ...args, events })
+    assert.equal(first.latest.text, 'x'.repeat(7999))
+    const next = pageReply({ ...args, events, cursor: first.page.nextCursor })
+    assert.equal(next.latest.text, tail + 'z')
+    const token = JSON.parse(Buffer.from(first.page.nextCursor, 'base64url').toString())
+    const cursor = Buffer.from(JSON.stringify({ ...token, offset: 8000 })).toString('base64url')
+    assert.equal(pageReply({ ...args, events, cursor }).pageError, 'invalid-cursor')
+  }
+  const text = 'e' + '\u0301'.repeat(16000)
+  const events = [answer(1, 1, text)]
+  let cursor, joined = ''
+  do {
+    const page = pageReply({ ...args, events, cursor })
+    assert.ok(page.latest.text.length <= 8000)
+    joined += page.latest.text
+    cursor = page.page.nextCursor ?? undefined
+  } while (cursor)
+  assert.equal(joined, text)
+})
+check('TC-REPLY-012', 'legacy negative sequence values always generate usable cursors', () => {
+  const args = { events: [answer(1, 1, 'a'.repeat(9000))], workspaceId: 'w', sessionId: 's', snapshotSeq: 1, afterSeq: -2 }
+  const first = pageReply(args)
+  assert.equal(pageReply({ ...args, cursor: first.page.nextCursor }).latest.text, 'a'.repeat(1000))
+})
+check('TC-REPLY-013', 'event summaries remove private reasoning and raw stream data', () => {
+  const e = answer(1, 1, 'public')
+  e.data.message.content.unshift({ type: 'reasoning', text: 'PRIVATE_REASONING' })
+  e.data.stream = ['PRIVATE_STREAM']
+  assert.ok(!summarizeEvent(e).includes('PRIVATE'))
+  assert.ok(!summarizeEvent(event(2, 'assistant/attempt', { stream: 'PRIVATE_ATTEMPT' })).includes('PRIVATE'))
 })
 await done()

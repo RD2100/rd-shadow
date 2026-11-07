@@ -4,18 +4,18 @@
 
 | 卡 | 标题 | 执行者 | 规模 | 状态 |
 |---|---|---|---|---|
-| TASK-01 | 配置的影子目录不存在时启动告警 | 本会话 | S | done（本批提交） |
-| TASK-02 | 标题读取失败时在目录输出中说明 | 本会话 | S | done（本批提交） |
+| TASK-01 | 配置的影子目录不存在时启动告警 | 本会话 | S | done（a10012c） |
+| TASK-02 | 标题读取失败时在目录输出中说明 | 本会话 | S | done（0360ff7） |
 | TASK-03 | 检查事件页加不可信数据标记 | 任意 | S | done（0.13.0 随 ADR-012） |
 | TASK-04 | persona 说明别的会话内容是数据 | 本会话 | XS | done（59e3869） |
-| TASK-05 | 串行化器清理已结束的链 | 本会话 | S | done（本批提交） |
-| TASK-06 | pack-check 输出子进程启动失败原因 | 本会话 | XS | done（本批提交） |
+| TASK-05 | 串行化器清理已结束的链 | 本会话 | S | done（d9a6cbf） |
+| TASK-06 | pack-check 输出子进程启动失败原因 | 本会话 | XS | done（b7009f1） |
 | TASK-07 | 英文 README 与中文 README 对齐 | 任意 | M | done（0.12 基线一并完成） |
 | TASK-08 | 修复本机影子目录（`SHADOW_DIR`） | **维护者，需用户批准** | XS | open |
 | TASK-09 | 恢复因读取客户端列表出错而消失的影子入口 | 当前修复会话 | S | done（b8c3de2） |
-| TASK-10 | 按具体投递定位回复 | 本会话 | M | done（本批提交） |
-| TASK-11 | 固定回复分页补读 | 本会话 | M | done（本批提交） |
-| TASK-12 | 验收证据规则与抗带偏验证 | 本会话 | M | open |
+| TASK-10 | 按具体投递定位回复 | 本会话 | M | done（ca4a444） |
+| TASK-11 | 固定回复分页补读 | 本会话 | M | done（8b6d82f） |
+| TASK-12 | 验收证据规则与抗带偏验证 | 本会话 | M | done（源码/离线验证/独立审核完成；模型试验未执行） |
 
 ---
 
@@ -52,11 +52,11 @@
 - **允许修改的文件**：`lib/core-render.js`、`lib/op-targets.js`、`tests/dispatch-core.test.mjs`、`tests/tools-sim.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§4.5、§6.3）、`CHANGELOG.md`、`docs/tasks.md`
 - **实现要求**：
   1. `renderTargets(result)`：若 `typeof result.titlesUnavailable === 'string' && result.titlesUnavailable.length > 0`，在第一行（`shadow_targets -> …`）之后插入 `titles: unavailable (<titlesUnavailable>)`。否则输出不变。
-  2. `op-targets.js`：`catch (error)` 里保存安全诊断码与关联号（原始错误不进入模型上下文；长度受限）（从 `./core-contract.js` 导入），传给 `renderTargets({ …, titlesUnavailable })`；删除 `TODO(TASK-02)` 注释。
+  2. `op-targets.js`：`catch (error)` 里保存安全诊断码与关联号（原始错误不进入模型上下文；长度受限）（使用 `core-render.titleFailureRef()`），传给 `renderTargets({ …, titlesUnavailable })`；删除 `TODO(TASK-02)` 注释。
   3. `tests/tools-sim.mjs`：在 `makeWorld()` 的 `world` 对象上加 `titlesThrow: false`；`readTitleSnapshots` 开头 `if (world.titlesThrow) throw new Error('title store offline')`。
 - **验收用例**：
   - TC-CORE-045：`renderTargets({workspaces: [], titlesUnavailable: 'x'})` 的第二行是 `titles: unavailable (x)`；不传该字段时没有以 `titles:` 开头的行。
-  - TC-TGT-006：`world.titlesThrow = true`，两个会话 → 输出包含两个会话 id、各自状态、`(untitled)`，以及 `titles: unavailable (title store offline)`。
+  - TC-TGT-006：`world.titlesThrow = true`，两个会话 → 输出包含两个会话 id、各自状态、`(untitled)`，以及 `titles: unavailable (title-read-failed ref=<12 hex>)`。
 - **完成后**：更新 `detailed-design.md` §4.5 T3（删掉"当前静默"）与 §6.3 格式；CHANGELOG Unreleased → Changed（模型可见输出变化）。
 
 ## TASK-03 检查事件页加不可信数据标记
@@ -88,7 +88,7 @@
 - **问题**：`spawnSync` 启动失败（如沙箱 EPERM）时 `status` 为 `null`、`stderr` 为空，报错只有 `npm pack failed:` 一行，看不出原因。
 - **允许修改的文件**：`scripts/pack-check.mjs`、`docs/test-cases.md`、`docs/tasks.md`
 - **实现要求**：新增 `function describe(result)`，返回 `status=<status> signal=<signal>` 加上 `error: <result.error.message>`（若有）加上 `stderr`；所有 `throw new Error(\`npm … failed:\n${…stderr…}\`)` 改用它。
-- **验收用例**：TC-PACK-009（manual），见 `test-cases.md`。
+- **验收用例**：TC-PACK-009（auto：真实 spawn 不存在的程序，覆盖启动错误与长度边界），见 `test-cases.md`。
 
 ## TASK-07 英文 README 与中文 README 对齐
 
@@ -114,5 +114,14 @@
 
 ## TASK-12 验收证据规则与抗带偏验证
 - **前置**：TASK-11。
-- **允许修改的文件**：`cordis.patch.yml`（仅 persona prefix）、`lib/core-render.js`、`lib/tools.js`、`tests/reply.test.mjs`、`tests/tools-sim.mjs`、`tests/patch.check.mjs`、`docs/tasks.md`、`docs/test-cases.md`、`docs/detailed-design.md`、`docs/decisions.md`、`CHANGELOG.md`。
+- **允许修改的文件**：`cordis.patch.yml`（仅 persona prefix）、`lib/core-render.js`、`lib/core-reply-page.js`（审核修复：旧负序号规范化）、`lib/tools.js`、`tests/reply.test.mjs`、`tests/tools-sim.mjs`、`tests/patch.check.mjs`、`docs/tasks.md`、`docs/test-cases.md`、`docs/detailed-design.md`、`docs/decisions.md`、`CHANGELOG.md`。
 - **验收**：工具明确 execution/claim/acceptance 区别；角色要求派活交付物、版本、检查、审核条件，按可信规则核对实际证据，在项目任务表记录，不新增账本。离线恶意回复经真实工具输出，检查假工具调用与文件变化；覆盖假授权、删/上传指令、尾部与跨页注入，以及缺文件/失败/旧证据/错误/截断/继续补做。不把确定性脚本或静态检查说成真实模型抗注入通过；真实模型试验未获账户/费用授权则标未执行。最终不同 Agent 审核实际 diff 与证据并处理实质问题。
+
+- **TASK-12 独立审核（首轮，2026-11-07）**：`/root/reliability_review`，请求配置=继承当前配置；解析/实际模型与推理强度未知，成本未知（工具不暴露配置，未指定品牌、未作最低成本断言）。读取了相对 6c38bf2 的实际代码与测试，独立运行 reply/工具仿真/patch/架构/索引。发现 P2：replyAfterSeq<-1 产生的 cursor 无法续读；事件页 assistant/message 摘要会泄露 reasoning。文档旧描述冲突同步整理。进入回归修复，尚未声称审核通过。
+
+- **TASK-12 独立复核（2026-11-07）**：同一独立审核者确认两项 P2 关闭，独立运行 reply 13、工具仿真 49、架构 8、索引 209 均通过，无相关新代码阻断。审核指出的 D0 表格误替换与“回复摘要/事件摘要”措辞冲突已纠正；审核者明确这些文档修正不需新一轮泛化审核。身份/配置与首轮相同。
+
+- **本轮交付边界**：三批源码与回归已实现；保留 b8c3de2/6c38bf2 的入口行为，lib/client.js 未改。无新依赖、无版本变更、无旧审批守卫。未修改 profile/环境变量，未运行 sync/judge，未重启、未向真实会话投递、未 push/tag/发布。运行中宿主与既有会话尚未加载这些变更。
+- **待授权部署事项**：获得新的部署授权后，同步源码副本并比对构建戳；host/tools/角色变更须完整重启，再核对新会话的工具 schema/角色、入口各状态与隔离会话的真实投递/分页。当前不执行这些步骤。真实读取者模型抗注入试验 TC-MODEL-001 为 NOT_RUN；离线回归不代替它，也不保证完全消除注入风险。
+
+- **最终本地验证（2026-11-07）**：`SHADOW_STRICT_TODO=1 node tests/run.mjs` 全通过：209 项自动检查、0 failed、0 todo；包含客户端 20 项、真实工具仿真 49 项、tarball 安装导入/仿真/客户端与打包 9 项，索引无问题。`git diff --check` 通过；`node scripts/fingerprint.mjs` 为 `7a15e491f3f7` / 20 runtime files（只证明源码身份，不证明宿主加载）。相对 6c38bf2 的 client.js、client测试与 package/lock 文件无差异。此前 FAIL 是先写回归与独立审核补漏的预期证据，修复后已重查；没有把未执行的线上/模型检查算进通过。

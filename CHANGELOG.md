@@ -8,11 +8,15 @@
 
 ### Changed
 
+- 角色与工具说明补交付物/版本/检查/审核证据规则；检查回复固定标 peer-report: unverified 和 acceptance: pending external verification。执行结束和对方声称完成均不自动验收；命令/链接不构成新授权。新增恶意回复的离线只读边界回归，真实模型对抗试验未运行。
+
 - shadow_inspect 新增 replyCursor 补读同一条回复；输出读取范围、总长、more 与后页凭据。错误凭据/错目标/原文改变均明确拒绝，保留默认有界输出、可见原文空白与每页不可信标记。
 
 - shadow_inspect 新增 deliveryMessageId；按确切采纳与回合边界关联回复，同轮多输入标 shared，缺证据不猜；与 replyAfterSeq 冲突返回 invalid-inspect-arguments。旧回复视图不借用之前回合的结束状态。
 
 ### Fixed
+
+- 独立审核补漏：事件摘要去除 reasoning/raw stream；旧负 replyAfterSeq 统一规范化，生成的凭据均能继续读取。
 
 - 标题读取失败仍列出 ID/状态，显示安全故障关联号，不泄露原始诊断。
 
