@@ -15,7 +15,7 @@
 | TASK-09 | 恢复因读取客户端列表出错而消失的影子入口 | 当前修复会话 | S | done（b8c3de2） |
 | TASK-10 | 按具体投递定位回复 | 本会话 | M | done（ca4a444） |
 | TASK-11 | 固定回复分页补读 | 本会话 | M | done（8b6d82f） |
-| TASK-12 | 验收证据规则与抗带偏验证 | 本会话 | M | done（源码/离线验证/独立审核完成；模型试验未执行） |
+| TASK-12 | 验收证据规则与抗带偏验证 | 本会话 | M | done（d7a1147；独立审核完成，模型试验未执行） |
 
 ---
 
@@ -125,3 +125,5 @@
 - **待授权部署事项**：获得新的部署授权后，同步源码副本并比对构建戳；host/tools/角色变更须完整重启，再核对新会话的工具 schema/角色、入口各状态与隔离会话的真实投递/分页。当前不执行这些步骤。真实读取者模型抗注入试验 TC-MODEL-001 为 NOT_RUN；离线回归不代替它，也不保证完全消除注入风险。
 
 - **最终本地验证（2026-11-07）**：`SHADOW_STRICT_TODO=1 node tests/run.mjs` 全通过：209 项自动检查、0 failed、0 todo；包含客户端 20 项、真实工具仿真 49 项、tarball 安装导入/仿真/客户端与打包 9 项，索引无问题。`git diff --check` 通过；`node scripts/fingerprint.mjs` 为 `7a15e491f3f7` / 20 runtime files（只证明源码身份，不证明宿主加载）。相对 6c38bf2 的 client.js、client测试与 package/lock 文件无差异。此前 FAIL 是先写回归与独立审核补漏的预期证据，修复后已重查；没有把未执行的线上/模型检查算进通过。
+
+- **提交与下载快照**：第一批 59e3869、a10012c、0360ff7、d9a6cbf、b7009f1；第二批 ca4a444、8b6d82f；第三批 d7a1147。源码/设计/测试、审核与验证快照统一打包至 `D:/DSH/handoffs/shadow-reliability-20261107-delivery/shadow-reliability.zip`；该 ZIP 是本轮静态交付，不是另一个动态任务表。
