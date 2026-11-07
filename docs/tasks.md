@@ -21,7 +21,7 @@
 
 | TASK-14 | 核验并按兼容结果安装 session-control | 本会话 | M | done（不兼容，未安装） |
 
-| TASK-15 | 影子新建普通对话与归档 | 本会话 | M | in progress |
+| TASK-15 | 影子新建普通对话与归档 | 本会话 | M | 源码7f6af8e已审核并部署，待重启核对 |
 
 ---
 
@@ -164,3 +164,5 @@
 
 - **TASK-15 实施与审核证据**：增加shadow_create/ shadow_archive，未装上游session-control、未替换dispatch。独立只读审核 `/root/lifecycle_review` 读取实际改动与本机rc.3代码，确认权限和副作用边界可收口；发现真实宿主活动异常仅有name而无码及4类准入测试被身份校验提前拦截，均先写失败回归再修复。审核者独立复查manage6、工具仿真51、架构9、索引218全部通过。请求配置=继承可用配置；解析/实际模型、推理强度与成本未知，未固定品牌或宣称最低成本。
 - **TASK-15 最终本地验证**：严格全量 `SHADOW_STRICT_TODO=1 node tests/run.mjs` 218项自动用例全通过，0失败/0todo，包含安装包导入及真实工具schema仿真；git diff --check通过。另执行从本机rc.3 app.asar提取的真实SessionCommandController类及archiveSession方法，与内存隔离存储组成验证：普通root/standard/命名/重放不重建/归档保留日志全部通过，模型请求数0。该验证不是正在运行的Desktop实测；没有操作真实业务会话。证据在 `D:/DSH/handoffs/shadow-lifecycle-20261107/`。
+
+- **TASK-15 部署结果**：经用户本轮继续实施授权，将7f6af8e增量同步desktop副本；218项严格离线检查、部署模块导入与构建戳、部署工具仿真51项全部通过，副本构建戳3e622c71d1f0（22模块）。旧副本备份 `handoffs/shadow-lifecycle-20261107/pre-deploy.zip`。没有运行profile全量依赖安装，没有改权限/默认模型或其他插件，没有push/发布。最后交由restart-plugin裁判重启并核对新启动日志；开始前不把已同步当成已生效。
