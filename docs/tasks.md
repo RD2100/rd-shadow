@@ -21,7 +21,7 @@
 
 | TASK-14 | 核验并按兼容结果安装 session-control | 本会话 | M | done（不兼容，未安装） |
 
-| TASK-15 | 影子新建普通对话与归档 | 本会话 | M | 源码7f6af8e已审核并部署，待重启核对 |
+| TASK-15 | 影子新建普通对话与归档 | 本会话 | M | done（7f6af8e实现；部署重启核对通过） |
 
 ---
 
@@ -166,3 +166,7 @@
 - **TASK-15 最终本地验证**：严格全量 `SHADOW_STRICT_TODO=1 node tests/run.mjs` 218项自动用例全通过，0失败/0todo，包含安装包导入及真实工具schema仿真；git diff --check通过。另执行从本机rc.3 app.asar提取的真实SessionCommandController类及archiveSession方法，与内存隔离存储组成验证：普通root/standard/命名/重放不重建/归档保留日志全部通过，模型请求数0。该验证不是正在运行的Desktop实测；没有操作真实业务会话。证据在 `D:/DSH/handoffs/shadow-lifecycle-20261107/`。
 
 - **TASK-15 部署结果**：经用户本轮继续实施授权，将7f6af8e增量同步desktop副本；218项严格离线检查、部署模块导入与构建戳、部署工具仿真51项全部通过，副本构建戳3e622c71d1f0（22模块）。旧副本备份 `handoffs/shadow-lifecycle-20261107/pre-deploy.zip`。没有运行profile全量依赖安装，没有改权限/默认模型或其他插件，没有push/发布。最后交由restart-plugin裁判重启并核对新启动日志；开始前不把已同步当成已生效。
+
+- **后续运行约束（用户2026-11-07明确要求）**：DSH已有其他项目正在开发，本会话后续不得重启DSH，不得再安排后台重启。开始核对时未发现本轮或其他restart-host.mjs工作进程；未终止DSH或其他项目。用户报告重启完成后，仅运行verify只读核对，确认宿主build 3e622c71d1f0已加载。账本本轮无relaunch成功记录，不据此虚报自动拉起；实际加载以新启动日志和verify为准。后续源码开发不自动部署热更新，避免影响在跑项目，启用变更等新的明确授权。
+
+- **TASK-15 生效核对**：用户报告DSH重启完成后，已只读verify确认宿主自报build 3e622c71d1f0，与部署副本一致。新建/归档实现已部署，未push/发布。独立审核与218项离线、部署副本、隔离真实rc.3组件验证通过；正在运行Desktop的模型调用新工具联调未执行，后续正常使用以新工具实际回执为准。
