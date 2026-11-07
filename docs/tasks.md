@@ -19,6 +19,8 @@
 
 | TASK-13 | 授权部署可靠性改进并重启核对 | 本会话 | S | done（47e05f5 部署，重启核对通过） |
 
+| TASK-14 | 核验并按兼容结果安装 session-control | 本会话 | M | done（不兼容，未安装） |
+
 ---
 
 ## TASK-09 恢复左下角影子入口
@@ -138,3 +140,13 @@
 - **TASK-13 同步结果**：desktop 部署副本备份至交付目录 `pre-deploy-163817.zip`；sync 的全部209项离线检查、部署导入/构建戳和49项工具仿真均通过。重启裁判按 422cdae 核对部署文件字节通过。为满足裁判的逐字节核验，把工作区 runtime 行尾还原为已提交的 LF，业务源码未变；实际源码/副本构建戳现在均为 `074d7c440416`（先前 ZIP 保留 CRLF，故旧戳不同）。下一步最后调用重启裁判，宿主新日志核对前不标生效。
 
 - **TASK-13 生效核对（2026-11-07 16:42，Asia/Tokyo）**：账本确认 restart/relaunch/verify 均成功；本次启动日志于 16:42:53 自报 `shadow: build 074d7c440416 over 20 files` 和 `shadow: directory D:/DSH/shadow`，与已核验部署副本一致。只筛选本轮 arm 后日志，无 did not activate 或影子运行时契约错误。部署与重启完成，宿主已加载新版；已有影子对话的角色上下文未逐个验证，建议新建影子对话执行用户测试。真实模型/投递/分页业务验收仍待用户测试，未宣称通过。
+
+## TASK-14 核验并按兼容结果安装 session-control
+- **授权**：用户要求核对 mouliangyu/dsh-plugins 的 session-control 与当前 DSH 兼容，兼容则安装，供影子新建和归档普通对话。
+- **允许操作**：更新本任务表；在 `D:/DSH/plugin-checks/session-control` 下载并审查固定版本源码/已编译包；只读对照当前 app.asar；离线与隔离宿主验证。兼容后备份并增量安装 desktop profile，只给影子提供所需工具并开启归档；不运行全 profile 依赖安装、不删已有包、不改其他业务源码、不 push。必要重启仍遵守最后一步的裁判流程，实际测试只创建/归档本轮临时对话，不操作业务对话。
+- **验收/停止条件**：必需服务/事件/工具参数符合实际 rc.3；新建的是普通对话，归档不删日志，影子子代理权限规则不被放宽。对跨项目发送与权限注入的冲突先说明。存在实质不兼容则不安装、不私自大改上游；报告具体证据和最短可用路径。动态进度只写此卡。
+
+- **TASK-14 核验结果（2026-11-07）**：固定检查上游 `5eb6ceb2f176a703c4c7b2f5b6927036961f6fb3` / session-control 0.1.0，当前已安装 DSH 核心为 0.2.1-rc.3。不满足“兼容才安装”的条件，未安装、未改 profile、未重启、未创建/投递/归档真实会话。
+- **启动阻断**：插件实际分发包 `lib/index.js:884` 调 `ctx.settings.register(...)`，本机 app.asar 的 SettingsForms 及其 Service 父类均无此方法。隔离执行实际类定义（不调用宿主构造器）和插件分发包，复现 `ctx.settings.register is not a function`，工具注册数为0。没有将上游基于另一套 settings 替身的单测当成当前宿主兼容证据。
+- **需求冲突**：上游 `src/index.ts:264-273` / 分发包约920行创建时设置 `meta.parentSession=parent.id`；旁路设置接口的独立假宿主断言复现这一事实。当前影子按 parentSession 判子代理并拒绝作为普通投递目标；建在影子目录时还会触发既有子代理降权规则。该插件不能原样满足“创建普通对话”的目标。
+- **证据位置**：`D:/DSH/plugin-checks/session-control/compatibility-evidence/check.mjs` 与 result.json；实际运行通过的是不兼容复现/契约断言，不是安装验收。整合 ZIP：`D:/DSH/handoffs/session-control-compatibility-20261107.zip`。本轮不擅自移植上游或换装其他插件；如继续，建议直接为影子补最小的新建/归档工具，复用宿主当前接口与原有派活规则，另行授权实施。
