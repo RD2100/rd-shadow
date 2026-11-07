@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+- 影子新增 shadow_create(workspaceId,title)，创建 standard 预设的空白普通主对话，不继承影子权限、不发消息或启动模型；按调用日志定位并对账防重建。
+- 新增 shadow_archive(workspaceId,sessionId,confirmed)，只隐藏明确要求归档的空闲普通对话，保留日志/文件，拒绝自身、子代理、影子工作区、执行中或待处理目标；不停止任务。生命周期副作用独立于既有派发逻辑。
+
 - Other Sessions are explicitly data rather than new authorization in the shadow persona.
 
 ### Changed

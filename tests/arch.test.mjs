@@ -20,6 +20,8 @@ const LIB = path.join(ROOT, 'lib')
 /** Layer of every runtime file. */
 const LAYERS = {
   'core-contract.js': 'core',
+  'core-manage.js': 'core',
+  'op-manage.js': 'op',
   'core-identity.js': 'core',
   'core-log.js': 'core',
   'core-admission.js': 'core',
@@ -143,4 +145,13 @@ check('TC-ARCH-008', 'every TODO in lib names its task card', () => {
   assert.deepEqual(loose, [])
 })
 
+check('TC-ARCH-009', 'only op-manage owns host lifecycle create rename and archive', () => {
+  const effects = [/commands\.create\(/, /commands\.rename\(/, /workspaceRegistry\.archiveSession\(/]
+  const offenders = []
+  for (const [name, source] of sources) {
+    if (name === 'op-manage.js' || name === 'client.js') continue
+    for (const pattern of effects) if (pattern.test(code(source))) offenders.push(name)
+  }
+  assert.deepEqual(offenders, [])
+})
 await done()

@@ -16,7 +16,7 @@
 | # | 规则 | 由谁强制 |
 |---|---|---|
 | R1 | 只改任务卡「允许修改的文件」里列出的文件 | review |
-| R2 | 模块分层不可跨越：`core-*` 只能 import `core-*` 和 `node:crypto`/`node:util`；`op-*` 只能 import `core-*`；只有 `op-dispatch.js` 可以调 `send`/`resolveAgent`/`selectModel` | `tests/arch.test.mjs` |
+| R2 | 模块分层不可跨越：`core-*` 只能 import `core-*` 和 `node:crypto`/`node:util`；`op-*` 只能 import `core-*`；只有 `op-dispatch.js` 可以调 `send`/`resolveAgent`/`selectModel`；只有 `op-manage.js` 可调用宿主的 `commands.create/rename` 与 `workspaceRegistry.archiveSession`（浏览器既有入口除外） | `tests/arch.test.mjs` |
 | R3 | `lib/` 单文件 ≤ 400 行（`client.js` 除外）；超了就按职责拆，并更新分层表 | `tests/arch.test.mjs` |
 | R4 | 新增 `lib/*.js` 必须同时登记到 `tests/arch.test.mjs` 的 `LAYERS` 和 `docs/detailed-design.md` §2 | `tests/arch.test.mjs` |
 | R5 | 每个测试用 `check('TC-<AREA>-<NNN>', '一句话行为', fn)`；id 全仓唯一，**不复用、不重排**已有编号 | `tests/harness.mjs`、`tests/tc-index.mjs` |

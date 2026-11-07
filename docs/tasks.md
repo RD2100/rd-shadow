@@ -21,6 +21,8 @@
 
 | TASK-14 | 核验并按兼容结果安装 session-control | 本会话 | M | done（不兼容，未安装） |
 
+| TASK-15 | 影子新建普通对话与归档 | 本会话 | M | in progress |
+
 ---
 
 ## TASK-09 恢复左下角影子入口
@@ -150,3 +152,15 @@
 - **启动阻断**：插件实际分发包 `lib/index.js:884` 调 `ctx.settings.register(...)`，本机 app.asar 的 SettingsForms 及其 Service 父类均无此方法。隔离执行实际类定义（不调用宿主构造器）和插件分发包，复现 `ctx.settings.register is not a function`，工具注册数为0。没有将上游基于另一套 settings 替身的单测当成当前宿主兼容证据。
 - **需求冲突**：上游 `src/index.ts:264-273` / 分发包约920行创建时设置 `meta.parentSession=parent.id`；旁路设置接口的独立假宿主断言复现这一事实。当前影子按 parentSession 判子代理并拒绝作为普通投递目标；建在影子目录时还会触发既有子代理降权规则。该插件不能原样满足“创建普通对话”的目标。
 - **证据位置**：`D:/DSH/plugin-checks/session-control/compatibility-evidence/check.mjs` 与 result.json；实际运行通过的是不兼容复现/契约断言，不是安装验收。整合 ZIP：`D:/DSH/handoffs/session-control-compatibility-20261107.zip`。本轮不擅自移植上游或换装其他插件；如继续，建议直接为影子补最小的新建/归档工具，复用宿主当前接口与原有派活规则，另行授权实施。
+
+## TASK-15 影子新建普通对话与归档
+- **授权/目标**：用户要求满足新建与归档诉求，不限定实现方式；承接 TASK-14 的条件安装委托，改为直接扩展影子。只在本轮已授权 profile 部署及临时测试对话上操作，不安装已证实不兼容插件、不扩展业务任务。
+- **所有权/基线**：本会话唯一写入者，main/e2462e3，工作区起始干净；无项目工作树要求，串行原位实施、独立审核只读。
+- **允许修改文件**：`lib/op-manage.js`、`lib/core-manage.js`、`lib/tools.js`、`lib/host-io.js`（若需暴露目录判断）、`lib/core-render.js`、`lib/core-contract.js`、`lib/core-shape.js`、`cordis.patch.yml`（仅persona）、`tests/tools-sim.mjs`、`tests/manage.test.mjs`、`tests/run.mjs`、`tests/arch.test.mjs`、`tests/deployed-imports.mjs`、`tests/runtime-contract.test.mjs`、`tests/patch.check.mjs`、`scripts/pack-check.mjs`（只纳入新增验证入口）、`docs/tasks.md`、`docs/test-cases.md`、`docs/detailed-design.md`、`docs/decisions.md`、`AGENTS.md`（只新增生命周期副作用边界说明）、`CHANGELOG.md`、`README.md`、`README.en.md`。配套审查与测试快照放 handoffs；不改侧栏、不加依赖、不push/发布。
+- **接口与成功标准**：新增 shadow_create(workspaceId,title) 只创建空白普通主对话，固定 standard 预设，不继承影子权限，不请求模型、不发送首条消息；返回确切会话ID，可再用 shadow_dispatch派活。新增 shadow_archive(workspaceId,sessionId,confirmed:true)，仅按用户明确归档指令调用；不归档自己、子代理、正在执行/等待用户/收件箱有消息的目标，不停任务、不删文件，已归档幂等成功。
+- **可靠性与权限**：两工具仍仅可由影子主会话调用；校验调用日志与参数。创建ID绑定原工具callId及参数，重放先对账不重复创建；部分失败/读回失败返回明确ID与unknown/partial，不盲目补建。拒绝在影子专属目录创建普通会话，避免既有按目录全权限规则把普通会话升权。create/rename/archive仅op-manage可调用；send/resolveAgent/selectModel仍仅op-dispatch。
+- **实际宿主依据**：rc.3 dsh-api-session-controller 的 sessionController.commands.create({workspaceId,sessionId,agentPreset}) 返回 {sessionId,agentPreset}；commands.rename({sessionId,title}) 返回 {title,seq}。命名身份遇已执行会话可能另建ID，故重放先只读核对现有目标、不重新create。workspaceRegistry.archiveSession(id) 在其写队列内检查活动，默认不停止，不用stopActivity:true。
+- **验收路径**：先失败回归，再实现；覆盖主会话/参数/工作区/预设/重放/部分失败/缺服务/归档准入/活动竞态/不删日志；全量与安装包检查，独立Agent审核。部署副本核对、新工具可加载后再安排宿主重启；实测只创建/归档临时对话。对现有会话的工具加载与角色上下文是否更新按证据报告。
+
+- **TASK-15 实施与审核证据**：增加shadow_create/ shadow_archive，未装上游session-control、未替换dispatch。独立只读审核 `/root/lifecycle_review` 读取实际改动与本机rc.3代码，确认权限和副作用边界可收口；发现真实宿主活动异常仅有name而无码及4类准入测试被身份校验提前拦截，均先写失败回归再修复。审核者独立复查manage6、工具仿真51、架构9、索引218全部通过。请求配置=继承可用配置；解析/实际模型、推理强度与成本未知，未固定品牌或宣称最低成本。
+- **TASK-15 最终本地验证**：严格全量 `SHADOW_STRICT_TODO=1 node tests/run.mjs` 218项自动用例全通过，0失败/0todo，包含安装包导入及真实工具schema仿真；git diff --check通过。另执行从本机rc.3 app.asar提取的真实SessionCommandController类及archiveSession方法，与内存隔离存储组成验证：普通root/standard/命名/重放不重建/归档保留日志全部通过，模型请求数0。该验证不是正在运行的Desktop实测；没有操作真实业务会话。证据在 `D:/DSH/handoffs/shadow-lifecycle-20261107/`。

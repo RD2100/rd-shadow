@@ -83,6 +83,7 @@ function makeWorld() {
         id,
         title: options.title ?? id,
         path: options.path ?? 'D:\\work\\proj',
+        async attachSession(id) { if (!memberIds.includes(id)) memberIds.push(id) },
         get sessionIds() {
           return memberIds.filter((sessionId) => sessions.has(sessionId))
         },
@@ -141,6 +142,11 @@ function makeWorld() {
         workspaceRegistry: {
           get: (id) => workspaces.get(id),
           list: () => [...workspaces.values()],
+          async archiveSession(id) {
+            world.effects.push({ kind: 'archive', sessionId: id })
+            if (live.get(id)?.status === 'running') throw Object.assign(new Error('active'), { code: 'WORKSPACE_ACTIVE_SESSION' })
+            if (!archived.includes(id)) archived.push(id)
+          },
           get archivedSessionIds() {
             return archived
           },
@@ -197,6 +203,21 @@ function makeWorld() {
           },
         },
         sessionController: {
+          commands: {
+            async create(request) {
+              world.effects.push({ kind: 'create', sessionId: request.sessionId })
+              const workspace = workspaces.get(request.workspaceId)
+              world.addSession(request.sessionId, workspace.path, { agentPreset: request.agentPreset })
+              await workspace.attachSession(request.sessionId)
+              world.goLive(request.sessionId)
+              return { sessionId: request.sessionId, agentPreset: request.agentPreset }
+            },
+            async rename(request) {
+              world.effects.push({ kind: 'rename', sessionId: request.sessionId })
+              const e = sessions.get(request.sessionId).append('session/title', { title: request.title, source: { kind: 'user' } })
+              return { title: request.title, seq: e.seq }
+            },
+          },
           async resolveAgent(sessionId) {
             world.effects.push({ kind: 'resolveAgent', sessionId })
             if (!sessions.has(sessionId)) {
@@ -307,8 +328,8 @@ function scenario(options = {}) {
   const tools = mount(world)
   const caller = world.goLive('shadow-1')
   /** Record one durable dispatch call on the shadow log. */
-  const recordCall = (callId, args) => {
-    shadow.append('tool/call', { turn: 1, step: 0, callId, name: 'shadow_dispatch', arguments: JSON.stringify(args) })
+  const recordCall = (callId, args, toolName = 'shadow_dispatch') => {
+    shadow.append('tool/call', { turn: 1, step: 0, callId, name: toolName, arguments: JSON.stringify(args) })
     return { agent: caller, callId, arguments: args, signal: new AbortController().signal }
   }
   return { world, shadow, target, tools, caller, recordCall }
@@ -342,7 +363,7 @@ await check('TC-REG-001', 'shadow tools ignore legacy approval config and dispat
     signal: new AbortController().signal,
   })
 
-  assert.deepEqual([...tools.keys()].sort(), ['shadow_dispatch', 'shadow_inspect', 'shadow_targets'])
+  assert.deepEqual([...tools.keys()].sort(), ['shadow_archive', 'shadow_create', 'shadow_dispatch', 'shadow_inspect', 'shadow_targets'])
   assert.equal(toolsModule.name, 'dsh-plugin-shadow/tools')
   assert.deepEqual(toolsModule.inject, ['tools'])
   assert.equal(tools.guards.length, 0)
@@ -918,5 +939,35 @@ await check('TC-INS-015', 'delivery paging and event summaries hide reasoning wi
     assert.match(next, /^untrusted:/m)
     target.events.pop() // Restore this fake fixture before testing the other initial locator.
   }
+})
+await check('TC-LIFE-001', 'real tool schemas create an ordinary empty conversation and archive it without losing history', async () => {
+  const { world, tools, recordCall, caller } = scenario()
+  const args = { workspaceId: 'w1', title: 'Temporary test' }
+  const exec = recordCall('create-1', args, 'shadow_create')
+  const first = await tools.get('shadow_create').execute(args, exec)
+  assert.match(first, /^shadow_create -> created/)
+  const id = /^session: (\S+)/m.exec(first)[1]
+  assert.equal(world.sessions.get(id).header.parentSession, undefined)
+  assert.equal(world.sessions.get(id).header.agentPreset, 'standard')
+  assert.ok(world.workspaces.get('w1').sessionIds.includes(id))
+  assert.ok(!world.effects.some(e => e.kind === 'send' || e.kind === 'selectModel'))
+  assert.match(await tools.get('shadow_create').execute(args, exec), /^shadow_create -> already-created/)
+  assert.equal(world.effects.filter(e => e.kind === 'create').length, 1)
+  const a = { workspaceId: 'w1', sessionId: id, confirmed: true }
+  const ae = recordCall('archive-1', a, 'shadow_archive')
+  assert.match(await tools.get('shadow_archive').execute(a, ae), /^shadow_archive -> archived/)
+  assert.ok(world.sessions.has(id))
+  assert.match(await tools.get('shadow_archive').execute(a, ae), /^shadow_archive -> already-archived/)
+})
+await check('TC-LIFE-002', 'new lifecycle tools fail closed on a non-shadow caller or missing management services', async () => {
+  const { tools, recordCall, caller, world } = scenario()
+  const args = { workspaceId: 'w1', title: 'Test' }
+  const exec = recordCall('create-drift', args, 'shadow_create')
+  const drift = mount(world, { breakScope: scope => { delete scope.sessionController.commands } })
+  assert.match(await drift.get('shadow_create').execute(args, exec), /runtime-mismatch/)
+  assert.match(await tools.get('shadow_create').execute(args, { ...exec, agent: { session: { header: { cwd: 'D:/elsewhere' } } } }), /not-shadow/)
+  const a = { workspaceId: 'w1', sessionId: 'target-1', confirmed: false }
+  assert.match(await tools.get('shadow_archive').execute(a, recordCall('no-confirm', a, 'shadow_archive')), /confirmation-required/)
+  assert.deepEqual(world.effects, [])
 })
 await done()

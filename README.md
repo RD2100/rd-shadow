@@ -6,13 +6,15 @@
 
 *[English](README.en.md)*
 
-影子是一个**住在专属目录里的 DSH 会话**，有三个工具：
+影子是一个**住在专属目录里的 DSH 会话**，有五个工具：
 
 | 工具 | 作用 |
 |---|---|
 | `shadow_targets` | 列出工作区与会话：id、实时状态（`idle`/`cold`/`busy`）、归档与子代理标记、标题 |
-| `shadow_inspect` | 只读查看一个会话：状态、工作目录、当前模型、事件序号；可按 `afterSeq`/`limit` 分页读事件；传 `replyAfterSeq`（投递回执里的 `inbox@` 序号）可读到目标之后的最新回复全文，以及这一轮是否结束。不唤醒冷会话 |
+| `shadow_inspect` | 只读查看一个会话：状态、工作目录、当前模型、事件序号；可按 `afterSeq`/`limit` 分页读事件；用 `deliveryMessageId` 对应具体派活，用 `replyCursor` 补读同一条长回复。旧 `replyAfterSeq` 保留；执行结束不代表验收通过。不唤醒冷会话 |
 | `shadow_dispatch` | 向一个会话投递一条消息。消息带 `source={kind:'agent-message', form:'relay', senderSessionId}`，接收方日志能重建"是谁派来的" |
+| `shadow_create` | 按用户要求，在已有项目工作区新建有标题的空白普通对话；固定 standard 预设，不继承影子权限、不发消息。创建后可另用 shadow_dispatch 派活 |
+| `shadow_archive` | 按用户明确要求归档指定空闲普通对话，保留日志和文件；不归档自己、子代理、影子工作区或仍有任务的对话 |
 
 投递是幂等的：同一次工具调用被重放，得到同一 message id，不会重复投递。想再发一次就重新调用。
 
@@ -44,7 +46,7 @@
 
 ## 配置
 
-`shadowDir` 是影子的身份：`cwd` 等于它的会话才是影子，才被固定权限并获得三个工具。默认 `<家目录>/dsh-shadow`，设置了 `SHADOW_DIR` 时用它的值。
+`shadowDir` 是影子的身份：`cwd` 等于它的会话才是影子，才被固定权限并获得五个工具。默认 `<家目录>/dsh-shadow`，设置了 `SHADOW_DIR` 时用它的值。
 
 **换影子目录：在 DSH 数据目录的 `.env`（`<DSH_HOME>/.env`）里写一行 `SHADOW_DIR=<目录>`**，然后完全重启 DSH。host 行和 preset 内的 `shadow-tools` 行都先读这个变量，所以两边总是一致。不要在 profile patch 里改 `shadowDir`：嵌在 preset 里的那一行改不到；也不要用 `DSH_` 开头的变量名，DSH 会拒绝启动（[ADR-015](https://github.com/RD2100/rd-shadow/blob/main/docs/decisions.md)）。从 0.11.0 之前升级、想保留原来的影子目录时，按 [运维手册 §4](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md) 设置这个变量。
 

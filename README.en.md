@@ -6,13 +6,15 @@
 
 *[中文](README.md)*
 
-The shadow is **a DSH Session that lives in its own directory**, with three tools:
+The shadow is **a DSH Session that lives in its own directory**, with five tools:
 
 | Tool | Purpose |
 |---|---|
 | `shadow_targets` | List workspaces and Sessions: id, live state (`idle`/`cold`/`busy`), archived and subagent markers, title |
-| `shadow_inspect` | Read one Session without waking it: state, directory, current model, sequence numbers; optional event pages via `afterSeq`/`limit`; pass `replyAfterSeq` (the `inbox@` number from a dispatch receipt) to read the target's latest reply in full and whether its turn has ended |
+| `shadow_inspect` | Read one Session without waking it: state, directory, current model, sequence numbers; optional event pages via `afterSeq`/`limit`; use `deliveryMessageId` to correlate one dispatch and `replyCursor` to continue the same long reply; legacy `replyAfterSeq` remains available. Execution ending never proves acceptance |
 | `shadow_dispatch` | Deliver one message to a Session. The message carries `source={kind:'agent-message', form:'relay', senderSessionId}`, so the receiver's log records who sent it |
+| `shadow_create` | On user request, create a titled empty ordinary conversation in an existing project workspace with the standard preset; no inherited shadow permissions or message sending. Dispatch separately to start work |
+| `shadow_archive` | On explicit user request, archive an idle ordinary conversation without deleting logs or files; refuse self, subagents, the shadow workspace, or outstanding work |
 
 Delivery is idempotent: replaying the same tool call yields the same message id and never delivers twice. To send again, call again.
 
@@ -44,7 +46,7 @@ Shadow Sessions are pinned to `danger-full-access` and tool calls never wait for
 
 ## Configuration
 
-`shadowDir` is the shadow's identity: only Sessions whose `cwd` equals it are the shadow, get the pinned permission, and see the three tools. Default: `<home>/dsh-shadow`, or the value of `SHADOW_DIR` when set.
+`shadowDir` is the shadow's identity: only Sessions whose `cwd` equals it are the shadow, get the pinned permission, and see the five tools. Default: `<home>/dsh-shadow`, or the value of `SHADOW_DIR` when set.
 
 **Move the shadow by adding `SHADOW_DIR=<directory>` to the DSH home `.env` (`<DSH_HOME>/.env`)**, then fully restart DSH. The host row and the `shadow-tools` row inside the preset both read it first, so they always agree. Do not change `shadowDir` in a profile patch: the row nested in the preset cannot be reached that way; and do not use a `DSH_`-prefixed name, which DSH refuses at startup ([ADR-015](https://github.com/RD2100/rd-shadow/blob/main/docs/decisions.md)). When upgrading from before 0.11.0 and keeping the old shadow directory, set this variable as described in [operations §4](https://github.com/RD2100/rd-shadow/blob/main/docs/operations.md).
 

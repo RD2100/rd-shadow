@@ -22,6 +22,7 @@ const suites = [
   { label: 'arch', args: [path.join(TESTS, 'arch.test.mjs')] },
   { label: 'dispatch-core', args: [path.join(TESTS, 'dispatch-core.test.mjs')] },
   { label: 'reply', args: [path.join(TESTS, 'reply.test.mjs')] },
+  { label: 'manage', args: [path.join(TESTS, 'manage.test.mjs')] },
   { label: 'ops', args: [path.join(TESTS, 'ops.test.mjs')] },
   { label: 'runtime-contract', args: [path.join(TESTS, 'runtime-contract.test.mjs')] },
   { label: 'shadow-dir', args: [path.join(TESTS, 'shadow-dir.test.mjs')] },

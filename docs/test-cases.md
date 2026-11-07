@@ -329,6 +329,7 @@
 | TC-ARCH-006 | auto | no runtime file except the browser bundle exceeds 400 lines | tests/arch.test.mjs |
 | TC-ARCH-007 | auto | the browser half is a self-contained ModuleLoader bundle | tests/arch.test.mjs |
 | TC-ARCH-008 | auto | every TODO in lib names its task card | tests/arch.test.mjs |
+| TC-ARCH-009 | auto | only op-manage owns host lifecycle create rename and archive | tests/arch.test.mjs |
 | TC-PACK-001 | auto | published file manifest contains every selected artifact | scripts/pack-check.mjs |
 | TC-PACK-002 | auto | the bundle patch, licence, README links, and runtime files are published | scripts/pack-check.mjs |
 | TC-PACK-003 | auto | every declared entry point exists and is published | scripts/pack-check.mjs |
@@ -345,6 +346,14 @@
 | TC-E2E-004 | manual | 影子派生的子代理不继承完全权限 | (manual) |
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
+| TC-LIFE-001 | auto | real tool schemas create an ordinary empty conversation and archive it without losing history | tests/tools-sim.mjs |
+| TC-LIFE-002 | auto | new lifecycle tools fail closed on a non-shadow caller or missing management services | tests/tools-sim.mjs |
+| TC-MANAGE-001 | auto | create makes an empty standard root session and replay never duplicates or renames it | tests/manage.test.mjs |
+| TC-MANAGE-002 | auto | create refuses non-shadow, subagent, changed arguments, missing workspace and shadow directory | tests/manage.test.mjs |
+| TC-MANAGE-003 | auto | partial create and title failures retain a reconcilable identity | tests/manage.test.mjs |
+| TC-MANAGE-004 | auto | archive changes only archive membership and is idempotent | tests/manage.test.mjs |
+| TC-MANAGE-005 | auto | archive refuses missing confirmation, self, subagent, busy, pending, waiting and mismatched membership | tests/manage.test.mjs |
+| TC-MANAGE-006 | auto | archive activity race refuses without cancelling or deleting | tests/manage.test.mjs |
 | TC-MODEL-001 | manual | 读取者模型的离线抗注入行为试验 | (manual) |
 | TC-REPLY-001 | auto | delivery reply is confined to its own admitted turn | tests/reply.test.mjs |
 | TC-REPLY-002 | auto | missing, pending, inherited and unbounded admissions stay uncertain | tests/reply.test.mjs |
@@ -360,6 +369,6 @@
 | TC-REPLY-012 | auto | legacy negative sequence values always generate usable cursors | tests/reply.test.mjs |
 | TC-REPLY-013 | auto | event summaries remove private reasoning and raw stream data | tests/reply.test.mjs |
 
-合计 217：auto 209，todo 0，manual 8。
+合计 226：auto 218，todo 0，manual 8。
 
 <!-- TC-INDEX:END -->
