@@ -17,6 +17,8 @@
 | TASK-11 | 固定回复分页补读 | 本会话 | M | done（8b6d82f） |
 | TASK-12 | 验收证据规则与抗带偏验证 | 本会话 | M | done（d7a1147；独立审核完成，模型试验未执行） |
 
+| TASK-13 | 授权部署可靠性改进并重启核对 | 本会话 | S | 已同步、检查通过，待重启后核对 |
+
 ---
 
 ## TASK-09 恢复左下角影子入口
@@ -127,3 +129,10 @@
 - **最终本地验证（2026-11-07）**：`SHADOW_STRICT_TODO=1 node tests/run.mjs` 全通过：209 项自动检查、0 failed、0 todo；包含客户端 20 项、真实工具仿真 49 项、tarball 安装导入/仿真/客户端与打包 9 项，索引无问题。`git diff --check` 通过；`node scripts/fingerprint.mjs` 为 `7a15e491f3f7` / 20 runtime files（只证明源码身份，不证明宿主加载）。相对 6c38bf2 的 client.js、client测试与 package/lock 文件无差异。此前 FAIL 是先写回归与独立审核补漏的预期证据，修复后已重查；没有把未执行的线上/模型检查算进通过。
 
 - **提交与下载快照**：第一批 59e3869、a10012c、0360ff7、d9a6cbf、b7009f1；第二批 ca4a444、8b6d82f；第三批 d7a1147。源码/设计/测试、审核与验证快照统一打包至 `D:/DSH/handoffs/shadow-reliability-20261107-delivery/shadow-reliability.zip`；该 ZIP 是本轮静态交付，不是另一个动态任务表。
+
+## TASK-13 授权部署可靠性改进并重启核对
+- **授权**：2026-11-07 用户在明确说明同步 desktop profile、重启会打断其他任务后回复“授权！”。仅本轮部署/重启，不包含 push、发布、业务会话测试投递。
+- **允许操作**：更新 `docs/tasks.md`；将已审核源码同步到 `D:/DSH/.DSH/profiles/desktop/node_modules/dsh-plugin-shadow`；使用现有 restart-plugin 裁判 arm/judge/restart/verify；只读核对日志、构建戳与加载状态。部署前保留现有副本备份。
+- **验收**：同步的离线与部署副本检查通过；副本字节符合明确本地提交；最后一步提交重启 worker；重启后宿主自报新构建戳且无激活错误。重启交出不等于已生效，按实际状态记录。用户自行执行前述真实测试提示词。
+
+- **TASK-13 同步结果**：desktop 部署副本备份至交付目录 `pre-deploy-163817.zip`；sync 的全部209项离线检查、部署导入/构建戳和49项工具仿真均通过。重启裁判按 422cdae 核对部署文件字节通过。为满足裁判的逐字节核验，把工作区 runtime 行尾还原为已提交的 LF，业务源码未变；实际源码/副本构建戳现在均为 `074d7c440416`（先前 ZIP 保留 CRLF，故旧戳不同）。下一步最后调用重启裁判，宿主新日志核对前不标生效。
