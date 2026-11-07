@@ -37,14 +37,14 @@
 - 前置：`shadowDir = path.join(os.tmpdir(), 'shadow-missing-' + process.pid)`，该路径不存在
 - 步骤：`apply(ctx, { shadowDir })`
 - 期望：恰好一条 `warn shadow: directory <该路径> does not exist; …`；插件照常挂载
-- 状态：todo
+- 状态：auto
 
 ### TC-HOST-014 存在的影子目录不产生目录告警
 - 层级：host 半边　关联：TASK-01
 - 前置：`shadowDir = os.tmpdir()`；服务齐全
 - 步骤：`apply`
 - 期望：没有任何 `warn` 行
-- 状态：todo
+- 状态：auto
 
 ### TC-TGT-006 标题读取失败时仍列出会话并说明原因
 - 层级：宿主仿真　关联：TASK-02
@@ -257,8 +257,8 @@
 | TC-HOST-010 | auto | the full-access identity is pinned when no review preset is offered | tests/host-preflight.test.mjs |
 | TC-HOST-011 | auto | a runtime without the session entry still mounts, and says nothing about it | tests/host-preflight.test.mjs |
 | TC-HOST-012 | auto | a runtime with the identity services mounts without complaint about the queue | tests/host-preflight.test.mjs |
-| TC-HOST-013 | todo | a configured shadowDir that does not exist is named in one warning (TASK-01) | tests/host-preflight.test.mjs |
-| TC-HOST-014 | todo | an existing shadowDir produces no directory warning (TASK-01) | tests/host-preflight.test.mjs |
+| TC-HOST-013 | auto | a missing directory warns once without creating it (TASK-01) | tests/host-preflight.test.mjs |
+| TC-HOST-014 | auto | an existing directory produces no warning (TASK-01) | tests/host-preflight.test.mjs |
 | TC-HOST-015 | auto | a subagent in the shadow directory is limited to workspace-write, not given full access | tests/host-preflight.test.mjs |
 | TC-HOST-016 | auto | an already-limited subagent is left alone on the next mount | tests/host-preflight.test.mjs |
 | TC-HOST-017 | auto | a subagent outside the shadow directory is not touched | tests/host-preflight.test.mjs |
@@ -332,6 +332,6 @@
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
 
-合计 196：auto 183，todo 5，manual 8。
+合计 196：auto 185，todo 3，manual 8。
 
 <!-- TC-INDEX:END -->

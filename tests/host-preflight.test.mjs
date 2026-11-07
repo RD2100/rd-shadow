@@ -6,6 +6,8 @@
  * checks drive `apply` with a fake context and assert what it reports.
  */
 import assert from 'node:assert/strict'
+import os from 'node:os'
+import path from 'node:path'
 import { suite } from './harness.mjs'
 import { apply } from '../lib/index.js'
 
@@ -76,7 +78,7 @@ check('TC-HOST-002', 'a fully equipped runtime reports no missing service', () =
   const { ctx, lines } = makeCtx({
     services: ['permissionPresets', 'sessions', 'agents', 'llm', 'sessionController', 'sessionQuery', 'tools', 'workspaceRegistry'],
   })
-  apply(ctx, { shadowDir: 'D:\\work\\shadow' })
+  apply(ctx, { shadowDir: os.tmpdir() })
   assert.deepEqual(lines.filter((line) => line.startsWith('warn')), [], lines.join('\n'))
 })
 
@@ -159,8 +161,20 @@ check('TC-HOST-012', 'a runtime with the identity services mounts without compla
   assert.ok(!lines.some((line) => line.includes('resume queue')), lines.join('\n'))
 })
 
-todo('TC-HOST-013', 'a configured shadowDir that does not exist is named in one warning (TASK-01)')
-todo('TC-HOST-014', 'an existing shadowDir produces no directory warning (TASK-01)')
+check('TC-HOST-013', 'a missing directory warns once without creating it (TASK-01)', () => {
+  const { ctx, lines } = makeCtx()
+  const shadowDir = path.join(os.tmpdir(), 'shadow-missing-' + process.pid)
+  apply(ctx, { shadowDir })
+  const warnings = lines.filter((line) => line.startsWith('warn shadow: directory'))
+  assert.equal(warnings.length, 1)
+  assert.ok(warnings[0].includes(shadowDir))
+  assert.match(warnings[0], /does not exist.*SHADOW_DIR/)
+})
+check('TC-HOST-014', 'an existing directory produces no warning (TASK-01)', () => {
+  const { ctx, lines } = makeCtx({ services: ['permissionPresets', 'sessions', 'agents', 'llm', 'sessionController', 'sessionQuery', 'tools', 'workspaceRegistry'] })
+  apply(ctx, { shadowDir: os.tmpdir() })
+  assert.deepEqual(lines.filter((line) => line.startsWith('warn')), [])
+})
 
 /**
  * A live subagent Session in the shadow directory with an appendable log.

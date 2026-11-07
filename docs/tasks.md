@@ -4,10 +4,10 @@
 
 | 卡 | 标题 | 执行者 | 规模 | 状态 |
 |---|---|---|---|---|
-| TASK-01 | 配置的影子目录不存在时启动告警 | 任意 | S | open |
+| TASK-01 | 配置的影子目录不存在时启动告警 | 本会话 | S | done（本批提交） |
 | TASK-02 | 标题读取失败时在目录输出中说明 | 任意 | S | open |
 | TASK-03 | 检查事件页加不可信数据标记 | 任意 | S | done（0.13.0 随 ADR-012） |
-| TASK-04 | persona 说明别的会话内容是数据 | 本会话 | XS | done（本批提交） |
+| TASK-04 | persona 说明别的会话内容是数据 | 本会话 | XS | done（59e3869） |
 | TASK-05 | 串行化器清理已结束的链 | 任意 | S | open |
 | TASK-06 | pack-check 输出子进程启动失败原因 | 任意 | XS | open |
 | TASK-07 | 英文 README 与中文 README 对齐 | 任意 | M | done（0.12 基线一并完成） |
@@ -29,12 +29,12 @@
 ## TASK-01 配置的影子目录不存在时启动告警
 
 - **问题**：0.11.0 默认目录改成 `<home>/dsh-shadow`。本机 profile 未覆盖，宿主日志显示 `shadow: directory C:\Users\25313\dsh-shadow`，而该目录不存在；影子静默失效，没有任何告警。
-- **允许修改的文件**：`lib/shadow-dir.js`、`lib/index.js`、`tests/host-preflight.test.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§3.9）、`CHANGELOG.md`
+- **允许修改的文件**：`lib/shadow-dir.js`、`lib/index.js`、`tests/host-preflight.test.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§3.9）、`CHANGELOG.md`、`docs/tasks.md`
 - **实现要求**：
   1. `lib/shadow-dir.js` 新增并导出 `shadowDirExists(dir)`：`dir` 是非空字符串且 `statSync(dir).isDirectory()` 为真时返回 `true`；任何异常返回 `false`。从 `node:fs` 导入 `statSync`。
   2. `lib/index.js`：在 `ctx.inject` 回调里，紧接 `shadow: directory …` 那行 info 之后，若 `!shadowDirExists(configuredDir)`，调用一次：
      ```js
-     scope.logger?.warn?.(`shadow: directory ${configuredDir} does not exist; no Session is treated as the shadow until it does. Set the same shadowDir on the host row and the shadow-tools row.`)
+     scope.logger?.warn?.(`shadow: directory ${configuredDir} does not exist; no Session is treated as the shadow until it does. Set SHADOW_DIR in the process environment or <DSH_HOME>/.env, then restart the host after deployment approval.`)
      ```
      不抛错，不创建目录。
   3. `tests/host-preflight.test.mjs` 顶部 `import os from 'node:os'` 和 `import path from 'node:path'`。**注意**：TC-HOST-002 断言"没有 warn"，它用的 `D:\\work\\shadow` 不存在，改完后会失败。把 TC-HOST-002 的 `shadowDir` 改成 `os.tmpdir()`；其他用例不断言"无 warn"，不用改。
@@ -46,7 +46,7 @@
 ## TASK-02 标题读取失败时在目录输出中说明
 
 - **问题**：`op-targets.js` 在 `readTitleSnapshots` 整体抛错时把标题清空并吞掉错误，模型看到一列 `(untitled)` 却不知道原因（0.6 时代就因此误诊过一次）。
-- **允许修改的文件**：`lib/core-render.js`、`lib/op-targets.js`、`tests/dispatch-core.test.mjs`、`tests/tools-sim.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§4.5、§6.3）、`CHANGELOG.md`
+- **允许修改的文件**：`lib/core-render.js`、`lib/op-targets.js`、`tests/dispatch-core.test.mjs`、`tests/tools-sim.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§4.5、§6.3）、`CHANGELOG.md`、`docs/tasks.md`
 - **实现要求**：
   1. `renderTargets(result)`：若 `typeof result.titlesUnavailable === 'string' && result.titlesUnavailable.length > 0`，在第一行（`shadow_targets -> …`）之后插入 `titles: unavailable (<titlesUnavailable>)`。否则输出不变。
   2. `op-targets.js`：`catch (error)` 里保存 `messageOf(error)`（从 `./core-contract.js` 导入），传给 `renderTargets({ …, titlesUnavailable })`；删除 `TODO(TASK-02)` 注释。

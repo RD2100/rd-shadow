@@ -164,7 +164,7 @@ status==='running' → busy
 
 ### 3.9 index.js（host 半边）
 
-`apply(ctx, config)`：`config.shadowDir` 经 `expandShadowDir`，缺省 `DEFAULT_SHADOW_DIR`。顺序固定：预检缺失服务（warn）→ 注入 `permissionPresets`、`sessions` → info 目录 → info 构建戳 → `hostServiceProblems`（非空：warn 一次 `runtime contract mismatch …; shadow Sessions are not pinned`，然后**不注册监听、不固定任何会话**）→ 注册 `session/created` → info 权限身份 → info 子代理规则 → 遍历已有会话。`pin` 对影子目录内的会话：根会话设 `danger-full-access`；`header.parentSession` 存在的子代理写 `sandbox/mode = workspace-write`（已是则跳过，ADR-009）。`pin` 内异常只 warn。
+`apply(ctx, config)`：`config.shadowDir` 经 `expandShadowDir`，缺省 `DEFAULT_SHADOW_DIR`。顺序固定：预检缺失服务（warn）→ 注入 `permissionPresets`、`sessions` → info 目录 → 目录不存在时 warn（含有效目录与 SHADOW_DIR 设置方式；不创建目录）→ info 构建戳 → `hostServiceProblems`（非空：warn 一次 `runtime contract mismatch …; shadow Sessions are not pinned`，然后**不注册监听、不固定任何会话**）→ 注册 `session/created` → info 权限身份 → info 子代理规则 → 遍历已有会话。`pin` 对影子目录内的会话：根会话设 `danger-full-access`；`header.parentSession` 存在的子代理写 `sandbox/mode = workspace-write`（已是则跳过，ADR-009）。`pin` 内异常只 warn。
 
 ### 3.10 client.js
 
