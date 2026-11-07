@@ -30,15 +30,27 @@ function loadBundle() {
   vm.runInNewContext(SOURCE, sandbox, { filename: 'client.js' })
   assert.equal(loaded.length, 1, 'the bundle must call __ModuleLoader__.load exactly once')
   const { id, factory } = loaded[0]
+  const states = []
+  let cursor = 0
   const stub = {
-    react: { createElement: (type, props, ...children) => ({ type, props, children }) },
-    '@deepseek-ai/dsh-client-ui-primitives': {},
+    react: {
+      createElement: (type, props, ...children) => ({ type, props, children }),
+      useState: (value) => {
+        const index = cursor++
+        if (!(index in states)) states[index] = value
+        return [states[index], (next) => { states[index] = next }]
+      },
+      useRef: () => ({ current: null }),
+      useMemo: (fn) => fn(),
+      useLayoutEffect: () => {},
+    },
+    '@deepseek-ai/dsh-client-ui-primitives': { useDismissOnOutsidePointer: () => {} },
   }
   const module = factory((specifier) => {
     if (!(specifier in stub)) throw new Error(`unexpected require: ${specifier}`)
     return stub[specifier]
   })
-  return { id, exports: module, takeSlot: () => captured }
+  return { id, exports: module, takeSlot: () => captured, render: (component, props) => { cursor = 0; return component(props) } }
 }
 
 /**
@@ -47,9 +59,10 @@ function loadBundle() {
  * @returns the slot definition plus the recorded calls.
  */
 function mount(options = {}) {
-  const { id, exports } = loadBundle()
+  const { id, exports, render } = loadBundle()
   const calls = { opened: [], created: [], registered: [], locale: [] }
   let slot
+  let component
   const ctx = {
     effect: (fn) => fn(),
     logger: { warn: () => {}, info: () => {} },
@@ -60,18 +73,19 @@ function mount(options = {}) {
         calls.registered.push(name)
         callback()
       },
-      register: (definition) => {
+      register: (definition, render) => {
         slot = definition
+        component = render
       },
     },
   }
-  exports.apply(ctx, { shadowDir: options.shadowDir ?? 'D:\\work\\shadow', shadowPresetId: 'shadow' })
-  return { id, exports, slot, calls }
+  exports.apply(ctx, options.noConfig ? undefined : { shadowDir: options.shadowDir ?? 'D:\\work\\shadow', shadowPresetId: 'shadow' })
+  return { id, exports, slot, calls, component, render: (props) => render(component, props) }
 }
 
 /** Fake collaborator set that records what the panel asks for. */
 function services(overrides = {}) {
-  const calls = { opened: [], created: [], selectedModel: [] }
+  const calls = { opened: [], created: [], selectedModel: [], refreshed: [] }
   const world = overrides.world ?? { sessions: {}, workspaces: [], archivedIds: [] }
   return {
     calls,
@@ -84,16 +98,16 @@ function services(overrides = {}) {
         },
         selectModel: async (request) => calls.selectedModel.push(request),
         // What the browser half reads to discover the shadow Workspace.
-        byId: () => world.sessions,
+        list: { getSnapshot: () => ({ byId: world.sessions }) },
+        refreshProjections: async (id) => { calls.refreshed.push(id) },
       },
       workspaces: {
-        listSnapshot: () => world.workspaces,
+        list: { getSnapshot: () => ({ items: world.workspaces, archivedSessionIds: world.archivedIds }) },
         create: async (request) => {
           calls.created.unshift(request)
           return { ok: true, value: { workspace: { workspaceId: 'ws-1' } } }
         },
         archiveSession: async () => ({ ok: true }),
-        archivedSessionIds: world.archivedIds,
       },
       ...overrides,
     },
@@ -257,13 +271,102 @@ check('TC-CLIENT-014', 'a workspace holding no shadow Session is not the shadow 
   assert.equal(slot.inject().shadowWorkspace?.workspaceId, 'ws-shadow')
 })
 
-check('TC-CLIENT-015', 'archived shadow Sessions do not make a workspace the shadow workspace', () => {
+check('TC-CLIENT-015', 'archived shadow Sessions still identify the workspace for creating a new conversation', async () => {
   const world = shadowWorld([], {
     sessions: { old: { displayTitle: 'old', projectionValues: { agentPreset: 'shadow' } } },
     workspaces: [{ workspaceId: 'ws-old', title: 'old', path: 'D:\\old', sessionIds: ['old'] }],
     archivedIds: ['old'],
   })
-  const { slot } = mount({ services: services({ world }).services })
+  const { calls, services: fake } = services({ world })
+  const { slot } = mount({ services: fake, noConfig: true })
+  assert.equal(slot.inject().shadowWorkspace?.workspaceId, 'ws-old')
+  await slot.inject().createShadow()
+  assert.equal(calls.created[0].workspaceId, 'ws-old')
+  assert.deepEqual(world.archivedIds, ['old'])
+})
+
+check('TC-CLIENT-016', 'real snapshot stores without row config discover current workspace and archive changes', async () => {
+  const world = shadowWorld([])
+  const { calls, services: fake } = services({ world })
+  const { slot } = mount({ services: fake, noConfig: true })
+  assert.equal(slot.inject().shadowWorkspace, undefined)
+  Object.assign(world, shadowWorld(['s1']))
+  assert.equal(slot.inject().shadowWorkspace?.workspaceId, 'ws-shadow')
+  await slot.inject().createShadow()
+  assert.deepEqual({ ...calls.created[0] }, { workspaceId: 'ws-shadow', agentPreset: 'shadow' })
+  world.archivedIds = ['s1']
+  assert.equal(slot.inject().shadowWorkspace?.workspaceId, 'ws-shadow')
+})
+
+check('TC-CLIENT-017', 'the footer component renders its entry with the real snapshot-store contract', () => {
+  const { calls, services: fake } = services({ world: shadowWorld(['s1']) })
+  const { slot, component } = mount({ services: fake, noConfig: true })
+  const tree = component({
+    ...slot.inject(),
+    wide: true,
+    t: (key) => key,
+    useSessions: (select) => select(fake.sessions.list.getSnapshot()),
+    useWorkspaces: (select) => select(fake.workspaces.list.getSnapshot()),
+  })
+  const button = tree.children[0]
+  assert.equal(button.props['aria-label'], 'entry.aria')
+  button.props.onClick()
+  assert.deepEqual(calls.opened, ['s1'])
+})
+
+check('TC-CLIENT-018', 'loading preset metadata finds cold shadow Sessions without opening them', async () => {
+  const world = shadowWorld([], {
+    sessions: { cold: {}, old: {}, child: { parentId: 'cold' } },
+    workspaces: [{ workspaceId: 'ws-shadow', sessionIds: ['cold', 'old', 'child'] }],
+    archivedIds: ['old'],
+  })
+  const { calls, services: fake } = services({ world })
+  fake.sessions.refreshProjections = async (id) => {
+    calls.refreshed.push(id)
+    world.sessions[id].projectionValues = { agentPreset: 'shadow' }
+  }
+  const { slot } = mount({ services: fake, noConfig: true })
+  assert.equal(slot.inject().shadowWorkspace, undefined)
+  await slot.inject().refreshShadows()
+  assert.equal(slot.inject().shadowWorkspace?.workspaceId, 'ws-shadow')
+  assert.deepEqual(calls.refreshed, ['cold', 'old'])
+  assert.deepEqual(calls.opened, [])
+  assert.deepEqual(calls.created, [])
+})
+
+check('TC-CLIENT-019', 'clicking an undiscovered shadow opens a visible panel and never silently creates a Session', async () => {
+  const { calls, services: fake } = services()
+  const { slot, render } = mount({ services: fake, noConfig: true })
+  const props = () => ({
+    ...slot.inject(), wide: true, t: (key) => key,
+    useSessions: (select) => select(fake.sessions.list.getSnapshot()),
+    useWorkspaces: (select) => select(fake.workspaces.list.getSnapshot()),
+  })
+  render(props()).children[0].props.onClick()
+  await new Promise((resolve) => setImmediate(resolve))
+  // With a panel open, the layout effect measures its anchor in the browser.
+  // The button's expanded state is independent of that DOM-only measurement.
+  assert.equal(render(props()).children[0].props['aria-expanded'], true)
+  assert.deepEqual(calls.created, [])
+})
+
+check('TC-CLIENT-020', 'a live root shadow workspace beats archived history and subagent presets', () => {
+  const world = shadowWorld([], {
+    sessions: {
+      old: { projectionValues: { agentPreset: 'shadow' } },
+      child: { parentId: 'parent', projectionValues: { agentPreset: 'shadow' } },
+      root: { projectionValues: { agentPreset: 'shadow' } },
+    },
+    workspaces: [
+      { workspaceId: 'history', sessionIds: ['old'] },
+      { workspaceId: 'child-only', sessionIds: ['child'] },
+      { workspaceId: 'active', sessionIds: ['root'] },
+    ],
+    archivedIds: ['old'],
+  })
+  const { slot } = mount({ services: services({ world }).services, noConfig: true })
+  assert.equal(slot.inject().shadowWorkspace?.workspaceId, 'active')
+  world.workspaces = [world.workspaces[1]]
   assert.equal(slot.inject().shadowWorkspace, undefined)
 })
 

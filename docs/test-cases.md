@@ -284,7 +284,12 @@
 | TC-CLIENT-012 | auto | the shadow workspace is found through its own Sessions, not a path | tests/client.test.mjs |
 | TC-CLIENT-013 | auto | creating a conversation reuses the discovered workspace instead of adopting a path | tests/client.test.mjs |
 | TC-CLIENT-014 | auto | a workspace holding no shadow Session is not the shadow workspace | tests/client.test.mjs |
-| TC-CLIENT-015 | auto | archived shadow Sessions do not make a workspace the shadow workspace | tests/client.test.mjs |
+| TC-CLIENT-015 | auto | archived shadow Sessions still identify the workspace for creating a new conversation | tests/client.test.mjs |
+| TC-CLIENT-016 | auto | real snapshot stores without row config discover current workspace and archive changes | tests/client.test.mjs |
+| TC-CLIENT-017 | auto | the footer component renders its entry with the real snapshot-store contract | tests/client.test.mjs |
+| TC-CLIENT-018 | auto | loading preset metadata finds cold shadow Sessions without opening them | tests/client.test.mjs |
+| TC-CLIENT-019 | auto | clicking an undiscovered shadow opens a visible panel and never silently creates a Session | tests/client.test.mjs |
+| TC-CLIENT-020 | auto | a live root shadow workspace beats archived history and subagent presets | tests/client.test.mjs |
 | TC-STAMP-001 | auto | the checkout produces a stamp | tests/build-stamp.test.mjs |
 | TC-STAMP-002 | auto | the stamp covers every runtime module | tests/build-stamp.test.mjs |
 | TC-STAMP-003 | auto | identical copies produce the same stamp | tests/build-stamp.test.mjs |
@@ -327,6 +332,6 @@
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
 
-合计 191：auto 177，todo 6，manual 8。
+合计 196：auto 182，todo 6，manual 8。
 
 <!-- TC-INDEX:END -->

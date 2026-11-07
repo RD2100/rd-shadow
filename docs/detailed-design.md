@@ -173,9 +173,11 @@ status==='running' → busy
 **`apply(ctx, config)` 里的 `config` 恒为 `undefined`**：浏览器侧建条目用 `{name: id}`，启动清单不带 config（ADR-016，rc.3 源码三处互证）。所以：
 
 - 目录与 preset id 都取不到行配置；`presetId` 用 bundle 内的常量 `shadow`（TC-PATCH-004 锁定补丁行的 id 与此一致）。
-- `findShadowWorkspace(workspaces, sessions, archivedIds, presetId)`：在工作区里找带 `agentPreset === presetId` 且未归档的会话，取最多的那个工作区。工作区的 `sessionIds` 宿主侧已按 cwd 过滤，所以它的 path 就是影子目录。
+- `findShadowWorkspace(workspaces, sessions, archivedIds, presetId)`：只统计 `agentPreset === presetId` 的主会话（排除 `parentId` 子代理），优先取未归档主会话最多的工作区。没有未归档主会话时，用归档影子主会话最多的工作区作为新建目标；归档会话仍不显示、不恢复（ADR-017）。工作区的 `sessionIds` 宿主侧已按 cwd 过滤，所以它的 path 就是影子目录。
 - `createShadow(selection, workspaceId?)`：用传入或自行发现的工作区建会话；两者都没有时，`shadowDir` 非空则 adopt，为空则抛 `no shadow workspace yet`。
-- slot 暴露 `{openShadow, createShadow, shadowDir, presetId, renameShadow, archiveShadow, shadowWorkspace}`。
+- slot 暴露 `{openShadow, createShadow, refreshShadows, shadowDir, presetId, renameShadow, archiveShadow, shadowWorkspace}`。
+- 客户端列表是快照源对象，不是函数：`sessions.list.getSnapshot().byId`；`workspaces.list.getSnapshot()` 提供 `items` 与 `archivedSessionIds`。`discovered()` 每次读取当前快照，不能调用 `sessions.list()`，也不能依赖不存在的 `byId()`、`listSnapshot()` 或 registry 顶层归档字段（TASK-09）。组件通过宿主 root hooks 的 `useSessions` / `useWorkspaces` 订阅同一来源。
+- 入口已知恰好一个未归档影子时直接打开；其他情况先打开面板，再用 `refreshShadows()` 分批（最多 8 个并行）调用 `sessions.refreshProjections(id)` 读取缺失的主会话预设资料，不唤醒会话。没有可见会话时显示空态，用户点“新建影子对话”才创建；加载和错误始终在面板里可见。
 
 ## 4. 状态机
 

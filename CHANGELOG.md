@@ -2,6 +2,13 @@
 
 格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### Fixed
+
+- 左下角影子入口因 `catalog?.list is not a function` 崩溃后消失（TASK-09）。工作区发现改读 rc.3 客户端的 `sessions.list.getSnapshot()` 与 `workspaces.list.getSnapshot()`，归档状态也取自工作区快照。原测试替身错误地提供了宿主不存在的 `byId()` / `listSnapshot()` 方法；现已改为真实快照源形状，新增无行配置、快照更新和入口组件渲染/打开会话的回归检查。
+- 所有影子主会话归档后，“新建影子对话”无法找到工作区，点击入口还会在隐藏面板里报错。现在优先识别未归档影子主会话，无此类会话时复用归档影子的原工作区；排除子代理，保留归档状态。入口先展示面板，再按需读取预设资料，加载、空态和错误可见（ADR-017）。
+
 ## [0.13.3] — 2026-11-06
 
 ### Fixed

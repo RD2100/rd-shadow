@@ -12,8 +12,18 @@
 | TASK-06 | pack-check 输出子进程启动失败原因 | 任意 | XS | open |
 | TASK-07 | 英文 README 与中文 README 对齐 | 任意 | M | done（0.12 基线一并完成） |
 | TASK-08 | 修复本机影子目录（`SHADOW_DIR`） | **维护者，需用户批准** | XS | open |
+| TASK-09 | 恢复因读取客户端列表出错而消失的影子入口 | 当前修复会话 | S | in progress |
 
 ---
+
+## TASK-09 恢复左下角影子入口
+
+- **依据**：2026-11-07 用户要求排查并恢复入口；真实 renderer 日志报 `catalog?.list is not a function`，随后 `slot entry crashed in 'sidebar.footer.action'`。
+- **允许修改的文件**：`lib/client.js`、`tests/client.test.mjs`、`docs/tasks.md`、`docs/test-cases.md`、`docs/detailed-design.md`（§3.10）、`docs/decisions.md`、`CHANGELOG.md`；使用现有同步脚本把同包部署到 desktop profile，不改用户的 profile 配置。
+- **实现要求**：按真实 rc.3 客户端契约，从 `sessions.list.getSnapshot().byId`、`workspaces.list.getSnapshot().items/archivedSessionIds` 读取数据；测试替身使用同一形状，补无行配置、数据从空变为就绪、入口组件实际渲染的检查。
+- **验收**：TC-CLIENT-015 至 020 和完整离线/部署检查；部署后左下角入口可见，点击有可见面板，已有影子全归档时仍能在原影子工作区新建并打开对话。运行时代码只改浏览器 bundle，使用宿主已有的 client-hmr，不重启宿主或向真实会话发消息。
+- **补充原因**：本机 3 个影子主会话均已归档，旧算法误把“没有未归档影子”当作“没有影子工作区”，导致新建失败；保留归档状态，以历史影子识别原工作区（ADR-017）。
+
 
 ## TASK-01 配置的影子目录不存在时启动告警
 
