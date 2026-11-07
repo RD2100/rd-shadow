@@ -9,7 +9,7 @@
 | TASK-03 | 检查事件页加不可信数据标记 | 任意 | S | done（0.13.0 随 ADR-012） |
 | TASK-04 | persona 说明别的会话内容是数据 | 本会话 | XS | done（59e3869） |
 | TASK-05 | 串行化器清理已结束的链 | 本会话 | S | done（本批提交） |
-| TASK-06 | pack-check 输出子进程启动失败原因 | 任意 | XS | open |
+| TASK-06 | pack-check 输出子进程启动失败原因 | 本会话 | XS | done（本批提交） |
 | TASK-07 | 英文 README 与中文 README 对齐 | 任意 | M | done（0.12 基线一并完成） |
 | TASK-08 | 修复本机影子目录（`SHADOW_DIR`） | **维护者，需用户批准** | XS | open |
 | TASK-09 | 恢复因读取客户端列表出错而消失的影子入口 | 当前修复会话 | S | done（b8c3de2） |
@@ -83,7 +83,7 @@
 ## TASK-06 pack-check 输出子进程启动失败原因
 
 - **问题**：`spawnSync` 启动失败（如沙箱 EPERM）时 `status` 为 `null`、`stderr` 为空，报错只有 `npm pack failed:` 一行，看不出原因。
-- **允许修改的文件**：`scripts/pack-check.mjs`、`docs/test-cases.md`
+- **允许修改的文件**：`scripts/pack-check.mjs`、`docs/test-cases.md`、`docs/tasks.md`
 - **实现要求**：新增 `function describe(result)`，返回 `status=<status> signal=<signal>` 加上 `error: <result.error.message>`（若有）加上 `stderr`；所有 `throw new Error(\`npm … failed:\n${…stderr…}\`)` 改用它。
 - **验收用例**：TC-PACK-009（manual），见 `test-cases.md`。
 

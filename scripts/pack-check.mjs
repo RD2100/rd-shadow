@@ -44,6 +44,13 @@ function runNpm(args, options) {
   return spawnSync('npm', args, options)
 }
 
+/** Bounded diagnostics for a child that exited, was signalled, or never started. */
+function describe(result) {
+  return `status=${result.status} signal=${result.signal}`
+    + (result.error ? `\nerror: ${String(result.error.message).slice(0, 400)}` : '')
+    + `\n${String(result.stderr ?? '').slice(0, 2000)}`
+}
+
 /** Whether one path is covered by the manifest's `files` entries. */
 function covered(relative) {
   if (relative === 'package.json') return true
@@ -123,7 +130,7 @@ check('TC-PACK-006', 'the npm tarball inventory matches the selected publish set
     encoding: 'utf8',
     env: process.env,
   })
-  if (result.status !== 0) throw new Error(`npm pack failed:\n${result.stderr ?? ''}`)
+  if (result.status !== 0) throw new Error(`npm pack failed:\n${describe(result)}`)
   const [pack] = JSON.parse(result.stdout)
   const packed = new Set(pack.files.map((file) => file.path))
   const missing = PACKAGE_FILES.filter((relative) => !packed.has(relative))
@@ -140,7 +147,7 @@ check('TC-PACK-007', 'the published runtime imports work from an npm tarball ins
     const packed = runNpm(['pack', '--json', '--pack-destination', staging], {
       cwd: ROOT, encoding: 'utf8', env: process.env,
     })
-    if (packed.status !== 0) throw new Error(`npm pack failed:\n${packed.stderr ?? ''}`)
+    if (packed.status !== 0) throw new Error(`npm pack failed:\n${describe(packed)}`)
     const [artifact] = JSON.parse(packed.stdout)
     const installDir = path.join(staging, 'install')
     mkdirSync(installDir, { recursive: true })
@@ -149,7 +156,7 @@ check('TC-PACK-007', 'the published runtime imports work from an npm tarball ins
       encoding: 'utf8',
       env: process.env,
     })
-    if (installed.status !== 0) throw new Error(`npm install of packed artifact failed:\n${installed.stderr ?? ''}`)
+    if (installed.status !== 0) throw new Error(`npm install of packed artifact failed:\n${describe(installed)}`)
 
     const packageDir = path.join(installDir, 'node_modules', manifest.name)
     const tests = path.join(ROOT, 'tests')
@@ -163,7 +170,7 @@ check('TC-PACK-007', 'the published runtime imports work from an npm tarball ins
       const result = spawnSync(process.execPath, ['--import', pathToFileURL(path.join(tests, 'register.mjs')).href, path.join(tests, script)], {
         cwd: ROOT, encoding: 'utf8', env,
       })
-      if (result.status !== 0) throw new Error(`${script} failed against installed tarball:\n${result.stdout ?? ''}${result.stderr ?? ''}`)
+      if (result.status !== 0) throw new Error(`${script} failed against installed tarball:\n${result.stdout ?? ''}${describe(result)}`)
     }
   } finally {
     rmSync(staging, { recursive: true, force: true })
@@ -176,4 +183,10 @@ check('TC-PACK-008', 'the published set is not empty and stays small', () => {
   console.log(`    selected source size: ${(bytes / 1024).toFixed(1)} KiB`)
 })
 
+check('TC-PACK-009', 'spawn failures show exit status, signal, bounded stderr and the actual cause (TASK-06)', () => {
+  const failed = spawnSync(path.join(os.tmpdir(), 'shadow-no-executable-' + process.pid), [], { encoding: 'utf8' })
+  const text = describe(failed)
+  if (!text.includes('status=null signal=null') || !text.includes('ENOENT')) throw new Error(text)
+  if (describe({ status: 3, signal: 'SIGTERM', stderr: 'x'.repeat(10000) }).length > 2500) throw new Error('unbounded diagnostic')
+})
 await done()

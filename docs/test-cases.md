@@ -78,10 +78,9 @@
 
 ### TC-PACK-009 子进程启动失败时说明原因
 - 层级：打包　关联：TASK-06
-- 前置：npm 缓存目录不可写的环境（例如 DSH 的 workspace-write 沙箱）
-- 步骤：`node scripts/pack-check.mjs`
-- 期望：TC-PACK-006 的失败信息包含 `status=`，以及 `error:` 或非空的 stderr，能看出是 EPERM
-- 状态：manual
+- 步骤：真实 spawnSync 不存在的程序，并检查超长 stderr 的边界
+- 期望：包含 status、signal、ENOENT 启动错误；stderr ≤2000 字符，error ≤400 字符
+- 状态：auto
 
 ### TC-DEPLOY-001 部署副本可加载且构建戳一致
 - 层级：部署副本　关联：operations §2
@@ -323,7 +322,7 @@
 | TC-PACK-006 | auto | the npm tarball inventory matches the selected publish set | scripts/pack-check.mjs |
 | TC-PACK-007 | auto | the published runtime imports work from an npm tarball install | scripts/pack-check.mjs |
 | TC-PACK-008 | auto | the published set is not empty and stays small | scripts/pack-check.mjs |
-| TC-PACK-009 | manual | 子进程启动失败时说明原因 | (manual) |
+| TC-PACK-009 | auto | spawn failures show exit status, signal, bounded stderr and the actual cause (TASK-06) | scripts/pack-check.mjs |
 | TC-DEPLOY-001 | manual | 部署副本可加载且构建戳一致 | (manual) |
 | TC-E2E-001 | manual | 列出、检查、投递、核对 | (manual) |
 | TC-E2E-002 | manual | 启动日志三行 | (manual) |
@@ -332,6 +331,6 @@
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
 
-合计 196：auto 188，todo 0，manual 8。
+合计 196：auto 189，todo 0，manual 7。
 
 <!-- TC-INDEX:END -->
