@@ -824,4 +824,20 @@ await check('TC-INS-011', 'delivery locator follows exact admission and never a 
   assert.ok(!result.includes('answer B'))
   assert.match(await tools.get('shadow_inspect').execute({ ...inspectArgs, replyAfterSeq: 0 }, { agent: caller }), /invalid-inspect-arguments/)
 })
+await check('TC-INS-012', 'tool pagination pins a reply and marks every subsequent page untrusted', async () => {
+  const { target, tools, caller } = scenario()
+  target.append('assistant/message', { turn: 1, message: { content: [{ type: 'text', text: 'A'.repeat(9000) }] } })
+  const args = { workspaceId: 'w1', sessionId: 'target-1' }
+  const run = (extra) => tools.get('shadow_inspect').execute({ ...args, ...extra }, { agent: caller })
+  const first = await run({ replyAfterSeq: -1 })
+  const replyCursor = /next replyCursor: (\S+)/.exec(first)[1]
+  target.append('assistant/message', { turn: 2, message: { content: [{ type: 'text', text: 'NEW REPLY' }] } })
+  const next = await run({ replyCursor })
+  assert.match(next, /^untrusted: /m)
+  assert.match(next, /range=\[8000,9000\) total=9000 more=false/)
+  assert.ok(next.endsWith('A'.repeat(1000)))
+  assert.ok(!next.includes('NEW REPLY'))
+  assert.match(await run({ replyCursor: 'bad' }), /reply-page-error\n.*\nreason: invalid-cursor/)
+  assert.match(await run({ replyCursor, replyAfterSeq: -1 }), /invalid-inspect-arguments/)
+})
 await done()

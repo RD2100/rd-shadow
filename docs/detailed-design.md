@@ -353,3 +353,12 @@ read one target exactly with shadow_inspect; deliver with shadow_dispatch.
 新增 core-delivery.js 属 core 层，纯函数 collectDeliveryReply；读取 turn/start.data.turn、assistant/message.data.turn、turn/end.data.turn（存在则必须为整数），同时保留旧日志缺字段时的不确定结果。静态 rc.3 来源：dsh-agent-loop 的 runTurn / step 事件追加路径；user/message 没有 turn 字段，必须按事件边界关联，runtime-context 不算另一业务输入。turn/start 在准入之前，一轮可处理多条消息与 next-step 输入。取消/错误/blocked/max-tokens 按原 kind 输出。
 
 §5 增补：invalid-inspect-arguments 表示互斥参数冲突；不读日志、不发送。§6 增补：reply 块在 untrusted 标记后带 delivery 状态与 messageId；associated/shared 才输出该范围回复，其他情况无回复，并说明只能确认的证据层级。
+
+
+### 9.1 固定回复分页契约
+
+新增 core-reply-page.js 为 core 层：纯函数 pageReply；无缓存、无账本、无授权能力。`replyCursor` 是不透明 v1 base64url JSON 定位符（≤4096 字节），含 target（workspace/session 独立字段）、replySeq、snapshotSeq、afterSeq、offset、文本 SHA-256。首次返回的 latest 文本仍有界；页元数据为 reply page: range=[start,end) total=<UTF-16长度> more=<bool> snapshot=<seq>，有后页时 next replyCursor: <token>。元数据置于正文前；每页仍有 untrusted 标记。不可与 deliveryMessageId/replyAfterSeq 混用；事件页参数不受影响。
+
+分页只重读同一 seq 的可见文本，逐页校验摘要与快照是否仍可读取；新回复不影响旧页。非法值、目标不符、原回复缺失、原文改变、快照回退、越界与非字素边界偏移分别返回 reply-page-error（固定原因），绝不回退最新。游标不是授权凭据；bind 与 membership 始终重新校验。UTF-16 偏移可精确拼接，Intl.Segmenter 在字素边界切页；病态单个字素超过 8000 时用码点边界有界切分，保持拼接原文。可见文本不 trim（仍跳过纯空白消息），块间以换行连接。reasoning 与 tool-call 不进入正文或摘要。
+
+§5/§6 增补：reply-page-error 只表示定位失败；invalid-inspect-arguments 表示首次/后续定位参数冲突。分页错误不携带旧/最新正文。字段 snapshot 与回合结束仅代表首次快照中的执行事实，不能当交付验收；当前会话状态由 asOfSeq 另行展示。

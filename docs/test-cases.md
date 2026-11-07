@@ -240,6 +240,7 @@
 | TC-INS-009 | auto | a target still mid-turn reports the turn as not ended and no reply yet | tests/tools-sim.mjs |
 | TC-INS-010 | auto | a target log whose folded events drifted is reported as runtime-mismatch, not misread | tests/tools-sim.mjs |
 | TC-INS-011 | auto | delivery locator follows exact admission and never a later job | tests/tools-sim.mjs |
+| TC-INS-012 | auto | tool pagination pins a reply and marks every subsequent page untrusted | tests/tools-sim.mjs |
 | TC-TGT-001 | auto | catalogs workspaces with session ids, states, and markers | tests/tools-sim.mjs |
 | TC-TGT-002 | auto | catalog keeps other titles when one session read is rejected | tests/tools-sim.mjs |
 | TC-TGT-003 | auto | catalog narrows to one workspace and reports an unknown one | tests/tools-sim.mjs |
@@ -338,7 +339,11 @@
 | TC-REPLY-004 | auto | mismatched content, duplicate admission and missing end never borrow later output | tests/reply.test.mjs |
 | TC-REPLY-005 | auto | error, cancellation and ongoing execution are distinct facts | tests/reply.test.mjs |
 | TC-REPLY-006 | auto | legacy latest reply never borrows an earlier turn end | tests/reply.test.mjs |
+| TC-REPLY-007 | auto | pages reconstruct Chinese, emoji, combining text and whitespace exactly | tests/reply.test.mjs |
+| TC-REPLY-008 | auto | a cursor pins the original reply despite newer answers | tests/reply.test.mjs |
+| TC-REPLY-009 | auto | bad, wrong-target, changed, removed and rolled-back cursors refuse explicitly | tests/reply.test.mjs |
+| TC-REPLY-010 | auto | empty and exact-boundary replies are bounded and hide reasoning | tests/reply.test.mjs |
 
-合计 204：auto 197，todo 0，manual 7。
+合计 209：auto 202，todo 0，manual 7。
 
 <!-- TC-INDEX:END -->

@@ -8,6 +8,8 @@
 
 ### Changed
 
+- shadow_inspect 新增 replyCursor 补读同一条回复；输出读取范围、总长、more 与后页凭据。错误凭据/错目标/原文改变均明确拒绝，保留默认有界输出、可见原文空白与每页不可信标记。
+
 - shadow_inspect 新增 deliveryMessageId；按确切采纳与回合边界关联回复，同轮多输入标 shared，缺证据不猜；与 replyAfterSeq 冲突返回 invalid-inspect-arguments。旧回复视图不借用之前回合的结束状态。
 
 ### Fixed

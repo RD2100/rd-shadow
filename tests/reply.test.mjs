@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { suite } from './harness.mjs'
+import { pageReply } from '../lib/core-reply-page.js'
 import { collectReply } from '../lib/core-reply.js'
 import { collectDeliveryReply } from '../lib/core-delivery.js'
 
@@ -50,5 +51,53 @@ check('TC-REPLY-006', 'legacy latest reply never borrows an earlier turn end', (
   const r = collectReply({ events: [answer(1, 1, 'old'), end(2, 1), start(3, 2), answer(4, 2, 'new')], afterSeq: 0 })
   assert.equal(r.latest.text, 'new')
   assert.equal(r.lastTurnEnd, null)
+})
+check('TC-REPLY-007', 'pages reconstruct Chinese, emoji, combining text and whitespace exactly', () => {
+  const text = '  中文😀e\u0301👨‍👩‍👧‍👦\n'.repeat(1500) + ' END  '
+  const events = [answer(1, 1, text)]
+  const args = { events, workspaceId: 'w', sessionId: 's', snapshotSeq: 1, afterSeq: 0 }
+  let page = pageReply(args)
+  let joined = ''
+  do {
+    assert.ok(page.latest.text.length <= 8000)
+    assert.ok(!page.latest.text.endsWith('\ud83d'))
+    joined += page.latest.text
+    page = page.page.nextCursor ? pageReply({ ...args, cursor: page.page.nextCursor }) : null
+  } while (page)
+  assert.equal(joined, text)
+})
+check('TC-REPLY-008', 'a cursor pins the original reply despite newer answers', () => {
+  const events = [answer(1, 1, 'A'.repeat(9000))]
+  const args = { events, workspaceId: 'w', sessionId: 's', snapshotSeq: 1, afterSeq: 0 }
+  const first = pageReply(args)
+  events.push(answer(2, 2, 'new'))
+  const next = pageReply({ ...args, snapshotSeq: 2, cursor: first.page.nextCursor })
+  assert.equal(next.latest.text, 'A'.repeat(1000))
+  assert.equal(next.page.snapshotSeq, 1)
+})
+check('TC-REPLY-009', 'bad, wrong-target, changed, removed and rolled-back cursors refuse explicitly', () => {
+  const events = [answer(1, 1, 'x'.repeat(9000))]
+  const args = { events, workspaceId: 'w', sessionId: 's', snapshotSeq: 1, afterSeq: 0 }
+  const cursor = pageReply(args).page.nextCursor
+  assert.equal(pageReply({ ...args, cursor: 'bad' }).pageError, 'invalid-cursor')
+  assert.equal(pageReply({ ...args, sessionId: 'other', cursor }).pageError, 'wrong-target')
+  assert.equal(pageReply({ ...args, snapshotSeq: 0, cursor }).pageError, 'snapshot-unavailable')
+  assert.equal(pageReply({ ...args, events: [], cursor }).pageError, 'reply-unavailable')
+  assert.equal(pageReply({ ...args, events: [answer(1, 1, 'y'.repeat(9000))], cursor }).pageError, 'reply-changed')
+  const raw = JSON.parse(Buffer.from(cursor, 'base64url').toString())
+  for (const offset of [-1, 9001, 1.5]) {
+    const forged = Buffer.from(JSON.stringify({ ...raw, offset })).toString('base64url')
+    assert.equal(pageReply({ ...args, cursor: forged }).pageError, 'invalid-cursor')
+  }
+})
+check('TC-REPLY-010', 'empty and exact-boundary replies are bounded and hide reasoning', () => {
+  const args = { workspaceId: 'w', sessionId: 's', snapshotSeq: 1, afterSeq: 0 }
+  assert.equal(pageReply({ ...args, events: [answer(1, 1, '')] }).latest, null)
+  const event = answer(1, 1, 'a'.repeat(8000))
+  event.data.message.content.push({ type: 'reasoning', text: 'SECRET' })
+  const r = pageReply({ ...args, events: [event] })
+  assert.equal(r.page.more, false)
+  assert.equal(r.page.nextCursor, null)
+  assert.equal(r.latest.text.length, 8000)
 })
 await done()

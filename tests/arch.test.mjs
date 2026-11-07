@@ -28,6 +28,7 @@ const LAYERS = {
   'core-shape.js': 'core',
   'core-reply.js': 'core',
   'core-delivery.js': 'core',
+  'core-reply-page.js': 'core',
   'shadow-dir.js': 'support',
   'build-stamp.js': 'support',
   'dispatch-core.js': 'barrel',
