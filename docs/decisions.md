@@ -154,6 +154,12 @@
 - **界面**：除恰好一个可见影子时直接打开外，先打开面板，明确展示加载、空态及错误；新建只由新建按钮触发。
 - **验证**：TC-CLIENT-015、018 至 020；本机通过入口新建并打开影子对话。
 
+## ADR-018 投递归因采用明确回合边界
+
+- 可选 deliveryMessageId 使用现有 messageId，不改变发送/幂等。inbox → exact user/message → enclosing turn/start/end 才能关联；缺少证据则 pending/uncertain。一轮多输入标 shared，不宣称唯一归因。next-step 新输入也算共享。
+- 旧 replyAfterSeq 保留为范围内最新回复视图；旧结束事件不再被新回复借用。执行结束不能代表验收。
+- 来源为静态 rc.3 dsh-agent-loop 代码与已有运行时事件规格；无真实投递测试。
+
 ## 未决问题
 
 | # | 问题 | 选项 | 建议 | 决策人 |

@@ -13,6 +13,9 @@
 | TASK-07 | 英文 README 与中文 README 对齐 | 任意 | M | done（0.12 基线一并完成） |
 | TASK-08 | 修复本机影子目录（`SHADOW_DIR`） | **维护者，需用户批准** | XS | open |
 | TASK-09 | 恢复因读取客户端列表出错而消失的影子入口 | 当前修复会话 | S | done（b8c3de2） |
+| TASK-10 | 按具体投递定位回复 | 本会话 | M | done（本批提交） |
+| TASK-11 | 固定回复分页补读 | 本会话 | M | open |
+| TASK-12 | 验收证据规则与抗带偏验证 | 本会话 | M | open |
 
 ---
 
@@ -98,3 +101,18 @@
 - **前置**：ADR-011（保留旧目录）；0.13.2 已发布（两行都读 `SHADOW_DIR`，ADR-015）。
 - **步骤**：见 `operations.md` §4。
 - **验收**：TC-E2E-002、TC-E2E-003、TC-E2E-004。
+
+## TASK-10 按具体投递定位回复
+- **允许修改的文件**：`lib/core-delivery.js`、`lib/core-reply.js`、`lib/core-render.js`、`lib/op-inspect.js`、`lib/tools.js`、`lib/core-shape.js`、`tests/reply.test.mjs`、`tests/run.mjs`、`tests/runtime-contract.test.mjs`、`tests/tools-sim.mjs`、`tests/arch.test.mjs`、`tests/deployed-imports.mjs`、`docs/tasks.md`、`docs/test-cases.md`、`docs/detailed-design.md`、`docs/decisions.md`、`CHANGELOG.md`。
+- **接口/验收**：新增可选 `deliveryMessageId`，与旧 `replyAfterSeq` 互斥；按 inbox 精确消息、user/message 与 turn/start/end 定位，非继承事件。缺少证据明确 not-found/pending/uncertain；同轮多输入 shared，不能声称独占归因。后续轮次不串入。保持 send、幂等算法不变。离线新用例与全量检查通过后提交，外部接口统一独立审核。
+- **只读契约核验**：2026-11-07 静态读取已安装 rc.3 app.asar 的 dsh-agent-loop：turn/start 在 preStep 前；首次请求逐条 append user/message（无 turn 字段，可有 runtime-context）；assistant/message 与 turn/end 带 turn；一轮可多输入，也可 next-step 继续采纳。没有唤醒/投递真实会话。
+
+## TASK-11 固定回复分页补读
+- **前置**：TASK-10。
+- **允许修改的文件**：`lib/core-reply.js`、`lib/core-reply-page.js`、`lib/core-render.js`、`lib/op-inspect.js`、`lib/tools.js`、`tests/reply.test.mjs`、`tests/tools-sim.mjs`、`tests/arch.test.mjs`、`tests/deployed-imports.mjs`、`docs/tasks.md`、`docs/test-cases.md`、`docs/detailed-design.md`、`docs/decisions.md`、`CHANGELOG.md`。
+- **接口/验收**：新增可选 `replyCursor`，与首次定位参数互斥；游标绑定工作区、会话、回复 seq、快照边界、文本摘要与偏移。默认最多约 8000 UTF-16 单元，分页不拆字素（中文/表情/组合字符）。返回范围、总长度、more 与 next cursor；非法/错目标/历史变化拒绝，不回退最新。完整拼接原始可见 text 块（块间换行），reasoning 不输出。覆盖新回复、空白、超长与边界。只读，无新副作用。
+
+## TASK-12 验收证据规则与抗带偏验证
+- **前置**：TASK-11。
+- **允许修改的文件**：`cordis.patch.yml`（仅 persona prefix）、`lib/core-render.js`、`lib/tools.js`、`tests/reply.test.mjs`、`tests/tools-sim.mjs`、`tests/patch.check.mjs`、`docs/tasks.md`、`docs/test-cases.md`、`docs/detailed-design.md`、`docs/decisions.md`、`CHANGELOG.md`。
+- **验收**：工具明确 execution/claim/acceptance 区别；角色要求派活交付物、版本、检查、审核条件，按可信规则核对实际证据，在项目任务表记录，不新增账本。离线恶意回复经真实工具输出，检查假工具调用与文件变化；覆盖假授权、删/上传指令、尾部与跨页注入，以及缺文件/失败/旧证据/错误/截断/继续补做。不把确定性脚本或静态检查说成真实模型抗注入通过；真实模型试验未获账户/费用授权则标未执行。最终不同 Agent 审核实际 diff 与证据并处理实质问题。

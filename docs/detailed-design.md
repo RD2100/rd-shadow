@@ -345,3 +345,11 @@ read one target exactly with shadow_inspect; deliver with shadow_dispatch.
 ### 8.3 新增一个工具
 
 需要先在 `decisions.md` 写 ADR（工具名一旦进入模型上下文就是契约）。实现上：新建 `op-<name>.js`（op 层）→ 在 `tools.js` 注册 → `arch.test.mjs` 登记 → 新 AREA 前缀的用例 → 本文 §3.8、§4、§6 → `cordis.patch.yml` 无需改（preset 行已加载整个 tools 入口）。
+
+## 9. 可靠性接口扩展（TASK-10 / TASK-11 / TASK-12）
+
+`shadow_inspect` 首次读取可以选择 `deliveryMessageId`（派发回执 message 值）或兼容的 `replyAfterSeq`；两者互斥。投递读取只认本会话非继承 inbox 中的 relay 消息，核对 user/message 原文/source，再以包围 user/message 的 turn/start 与匹配 turn/end 固定执行范围。输出 delivery: not-found/pending/uncertain/associated/shared；shared 指一轮收到多项输入，回复不可独占归于该投递。缺少回合证据时不猜测。后续轮次不参与该投递回复，运行结束不能当验收。
+
+新增 core-delivery.js 属 core 层，纯函数 collectDeliveryReply；读取 turn/start.data.turn、assistant/message.data.turn、turn/end.data.turn（存在则必须为整数），同时保留旧日志缺字段时的不确定结果。静态 rc.3 来源：dsh-agent-loop 的 runTurn / step 事件追加路径；user/message 没有 turn 字段，必须按事件边界关联，runtime-context 不算另一业务输入。turn/start 在准入之前，一轮可处理多条消息与 next-step 输入。取消/错误/blocked/max-tokens 按原 kind 输出。
+
+§5 增补：invalid-inspect-arguments 表示互斥参数冲突；不读日志、不发送。§6 增补：reply 块在 untrusted 标记后带 delivery 状态与 messageId；associated/shared 才输出该范围回复，其他情况无回复，并说明只能确认的证据层级。

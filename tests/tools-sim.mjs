@@ -803,4 +803,25 @@ await check('TC-REG-002', 'a host missing a method the tools call refuses all th
   assert.equal(target.events.length, 0)
 })
 
+await check('TC-INS-011', 'delivery locator follows exact admission and never a later job', async () => {
+  const { world, target, tools, recordCall, caller } = scenario()
+  const args = { workspaceId: 'w1', sessionId: 'target-1', content: 'job a' }
+  const receipt = await tools.get('shadow_dispatch').execute(args, recordCall('call-a', args))
+  const deliveryMessageId = /message: (\S+)/.exec(receipt)[1]
+  const inspectArgs = { workspaceId: 'w1', sessionId: 'target-1', deliveryMessageId }
+  const run = () => tools.get('shadow_inspect').execute(inspectArgs, { agent: caller })
+  assert.match(await run(), /delivery: pending/)
+  target.append('turn/start', { turn: 1 })
+  world.admit('target-1', { provider: 'p', model: 'm' })
+  target.append('assistant/message', { turn: 1, message: { content: [{ type: 'text', text: 'answer A' }] } })
+  target.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+  target.append('turn/start', { turn: 2 })
+  target.append('user/message', { id: 'b', source: { kind: 'user' } })
+  target.append('assistant/message', { turn: 2, message: { content: [{ type: 'text', text: 'answer B' }] } })
+  const result = await run()
+  assert.match(result, /delivery: associated/)
+  assert.ok(result.endsWith('answer A'))
+  assert.ok(!result.includes('answer B'))
+  assert.match(await tools.get('shadow_inspect').execute({ ...inspectArgs, replyAfterSeq: 0 }, { agent: caller }), /invalid-inspect-arguments/)
+})
 await done()

@@ -27,6 +27,7 @@ const LAYERS = {
   'core-serial.js': 'core',
   'core-shape.js': 'core',
   'core-reply.js': 'core',
+  'core-delivery.js': 'core',
   'shadow-dir.js': 'support',
   'build-stamp.js': 'support',
   'dispatch-core.js': 'barrel',

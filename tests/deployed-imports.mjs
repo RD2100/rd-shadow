@@ -37,6 +37,7 @@ await load('shadow-dir.js', ['DEFAULT_SHADOW_DIR', 'directoryKey', 'expandShadow
 await load('dispatch-core.js', ['deriveMessageId', 'deliveryEvidence', 'renderTargets'])
 await load('host-io.js', ['createHost'])
 await load('op-dispatch.js', ['dispatch', 'liveReady', 'reject'])
+await load('core-delivery.js', ['collectDeliveryReply'])
 await load('op-inspect.js', ['inspect'])
 await load('op-targets.js', ['targets', 'collectTitles'])
 await load('index.js', ['name', 'apply'])

@@ -6,6 +6,10 @@
 
 - Other Sessions are explicitly data rather than new authorization in the shadow persona.
 
+### Changed
+
+- shadow_inspect 新增 deliveryMessageId；按确切采纳与回合边界关联回复，同轮多输入标 shared，缺证据不猜；与 replyAfterSeq 冲突返回 invalid-inspect-arguments。旧回复视图不借用之前回合的结束状态。
+
 ### Fixed
 
 - 标题读取失败仍列出 ID/状态，显示安全故障关联号，不泄露原始诊断。

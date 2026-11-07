@@ -200,6 +200,7 @@
 | TC-RTC-005 | auto | service shapes name the missing service or method | tests/runtime-contract.test.mjs |
 | TC-RTC-006 | auto | package.json engines.dsh starts at the verified runtime and stops before the next patch line | tests/runtime-contract.test.mjs |
 | TC-RTC-007 | auto | the probe decodes concatenated zstd frames and reports drift without message text | tests/runtime-contract.test.mjs |
+| TC-RTC-008 | auto | turn identity fields fail visibly on drift | tests/runtime-contract.test.mjs |
 | TC-REG-001 | auto | shadow tools ignore legacy approval config and dispatch without waiting | tests/tools-sim.mjs |
 | TC-REG-002 | auto | a host missing a method the tools call refuses all three tools and warns once at mount | tests/tools-sim.mjs |
 | TC-DSP-001 | auto | delivers to a cold target and reports acceptance | tests/tools-sim.mjs |
@@ -238,6 +239,7 @@
 | TC-INS-008 | auto | after a delivery, replyAfterSeq returns the target's answer and its ended turn | tests/tools-sim.mjs |
 | TC-INS-009 | auto | a target still mid-turn reports the turn as not ended and no reply yet | tests/tools-sim.mjs |
 | TC-INS-010 | auto | a target log whose folded events drifted is reported as runtime-mismatch, not misread | tests/tools-sim.mjs |
+| TC-INS-011 | auto | delivery locator follows exact admission and never a later job | tests/tools-sim.mjs |
 | TC-TGT-001 | auto | catalogs workspaces with session ids, states, and markers | tests/tools-sim.mjs |
 | TC-TGT-002 | auto | catalog keeps other titles when one session read is rejected | tests/tools-sim.mjs |
 | TC-TGT-003 | auto | catalog narrows to one workspace and reports an unknown one | tests/tools-sim.mjs |
@@ -330,7 +332,13 @@
 | TC-E2E-004 | manual | 影子派生的子代理不继承完全权限 | (manual) |
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
+| TC-REPLY-001 | auto | delivery reply is confined to its own admitted turn | tests/reply.test.mjs |
+| TC-REPLY-002 | auto | missing, pending, inherited and unbounded admissions stay uncertain | tests/reply.test.mjs |
+| TC-REPLY-003 | auto | multiple inputs share a turn; runtime context alone does not | tests/reply.test.mjs |
+| TC-REPLY-004 | auto | mismatched content, duplicate admission and missing end never borrow later output | tests/reply.test.mjs |
+| TC-REPLY-005 | auto | error, cancellation and ongoing execution are distinct facts | tests/reply.test.mjs |
+| TC-REPLY-006 | auto | legacy latest reply never borrows an earlier turn end | tests/reply.test.mjs |
 
-合计 196：auto 189，todo 0，manual 7。
+合计 204：auto 197，todo 0，manual 7。
 
 <!-- TC-INDEX:END -->

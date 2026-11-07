@@ -42,7 +42,7 @@ check('TC-RTC-001', 'every rc.3 event shape passes the check and folds as expect
   const evidence = deliveryEvidence({ events: rc3, inheritedEventCount: 0, message: relay })
   assert.deepEqual([evidence.inboxSeq, evidence.userSeq, evidence.execution?.requestHeaderSeq], [2, 4, 5])
   const reply = collectReply({ events: rc3, afterSeq: 2 })
-  assert.deepEqual([reply.messages, reply.toolCalls, reply.turnsEnded, reply.latest?.text, reply.lastTurnEnd?.kind], [2, 1, 3, 'ok', 'error'])
+  assert.deepEqual([reply.messages, reply.toolCalls, reply.turnsEnded, reply.latest?.text, reply.lastTurnEnd?.kind], [2, 1, 3, 'ok', 'completed'])
 })
 
 check('TC-RTC-002', 'each folded field that drifts is named with its seq and type', () => {
@@ -106,4 +106,11 @@ check('TC-RTC-007', 'the probe decodes concatenated zstd frames and reports drif
   assert.deepEqual(drifted.problems, ['#1 turn/end: data.reason.kind is not a string'])
 })
 
+check('TC-RTC-008', 'turn identity fields fail visibly on drift', () => {
+  assert.deepEqual(eventProblems([{ seq: 1, type: 'turn/start', data: { turn: '1' } }]), ['#1 turn/start: data.turn is not an integer'])
+  for (const type of ['assistant/message', 'turn/end']) {
+    const data = type === 'assistant/message' ? { turn: 'x', message: { content: [] } } : { turn: 'x', reason: { kind: 'completed' } }
+    assert.ok(eventProblems([{ seq: 2, type, data }]).some((p) => p.includes('data.turn')))
+  }
+})
 await done()
