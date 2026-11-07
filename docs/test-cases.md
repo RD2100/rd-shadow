@@ -50,14 +50,14 @@
 - 层级：宿主仿真　关联：TASK-02
 - 前置：`world.titlesThrow = true`；工作区 `w1` 含两个会话
 - 步骤：影子调用 `shadow_targets({})`
-- 期望：输出含两个会话 id 与状态、`(untitled)`、`titles: unavailable (title store offline)`
-- 状态：todo
+- 期望：输出含两个会话 id 与状态、`(untitled)`、`titles: unavailable (title-read-failed ref=<12 hex>)，不含原始错误中的秘密/URL`
+- 状态：auto
 
 ### TC-CORE-045 目录渲染只在需要时输出标题不可用行
 - 层级：纯核　关联：TASK-02
 - 步骤：`renderTargets({workspaces: [], titlesUnavailable: 'x'})`；再不带该字段渲染
 - 期望：前者第二行为 `titles: unavailable (x)`；后者没有以 `titles:` 开头的行
-- 状态：todo
+- 状态：auto
 
 ### TC-CORE-046 事件页之前有不可信数据标记
 - 层级：纯核　关联：TASK-03、ADR-012
@@ -179,7 +179,7 @@
 | TC-CORE-042 | auto | render: a refusal before the read omits the probe lines | tests/dispatch-core.test.mjs |
 | TC-CORE-043 | auto | render: inspection reports an unreadable target with its reason | tests/dispatch-core.test.mjs |
 | TC-CORE-044 | auto | render: a long event summary is bounded | tests/dispatch-core.test.mjs |
-| TC-CORE-045 | todo | renderTargets prints the titles-unavailable line only when asked (TASK-02) | tests/dispatch-core.test.mjs |
+| TC-CORE-045 | auto | renderTargets prints the titles-unavailable line only when asked (TASK-02) | tests/dispatch-core.test.mjs |
 | TC-CORE-046 | auto | an inspection event page is introduced by the untrusted-data line (TASK-03) | tests/dispatch-core.test.mjs |
 | TC-CORE-047 | auto | reply: the latest visible text wins; reasoning is hidden; tool calls are counted | tests/dispatch-core.test.mjs |
 | TC-CORE-048 | auto | reply: events at or before afterSeq are ignored | tests/dispatch-core.test.mjs |
@@ -244,7 +244,7 @@
 | TC-TGT-003 | auto | catalog narrows to one workspace and reports an unknown one | tests/tools-sim.mjs |
 | TC-TGT-004 | auto | catalog pages oversized workspaces and says so | tests/tools-sim.mjs |
 | TC-TGT-005 | auto | catalog refuses a non-shadow caller | tests/tools-sim.mjs |
-| TC-TGT-006 | todo | a failed title read keeps ids and states and adds a titles: unavailable line (TASK-02) | tests/tools-sim.mjs |
+| TC-TGT-006 | auto | failed title reads retain ids and states with a safe diagnostic (TASK-02) | tests/tools-sim.mjs |
 | TC-HOST-001 | auto | names the effective directory at startup | tests/host-preflight.test.mjs |
 | TC-HOST-002 | auto | a fully equipped runtime reports no missing service | tests/host-preflight.test.mjs |
 | TC-HOST-003 | auto | missing services are named instead of failing silently | tests/host-preflight.test.mjs |
@@ -332,6 +332,6 @@
 | TC-E2E-005 | manual | 派活后读到回复 | (manual) |
 | TC-E2E-006 | manual | DSH 更新后插件不悄悄失效 | (manual) |
 
-合计 196：auto 185，todo 3，manual 8。
+合计 196：auto 187，todo 1，manual 8。
 
 <!-- TC-INDEX:END -->

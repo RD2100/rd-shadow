@@ -227,7 +227,7 @@ I0 bind → I0b 服务形状（`runtime-mismatch`）→ I1 成员（同 D2）→
 
 ### 4.5 shadow_targets
 
-T0 bind → T0b 服务形状（`runtime-mismatch`）→ T1 全部或指定工作区（不存在 → `workspace-not-found`）→ T2 每工作区截取 `limit`（1..40），记录 `omitted` → T3 `listSessions`（取 `parentSession` 判子代理）+ `readTitleSnapshots`（整体失败 → 标题全空，**当前静默**，TASK-02）→ T4 渲染。状态只看 live agent：无 → `cold`，`running` → `busy`，否则 `idle`（rc.3 的 `agent.status` 只有这两个值）。
+T0 bind → T0b 服务形状（`runtime-mismatch`）→ T1 全部或指定工作区（不存在 → `workspace-not-found`）→ T2 每工作区截取 `limit`（1..40），记录 `omitted` → T3 `listSessions`（取 `parentSession` 判子代理）+ `readTitleSnapshots`（整体失败 → 保留 ID/状态、标题空并显示 titles: unavailable；错误只输出 title-read-failed 与 12 位关联号，不输出原始诊断）→ T4 渲染。状态只看 live agent：无 → `cold`，`running` → `busy`，否则 `idle`（rc.3 的 `agent.status` 只有这两个值）。
 
 ## 5. 词汇表（REASON）
 
@@ -290,6 +290,7 @@ reply text (seq <n>; <chars> chars[; truncated to the first <k>][; interrupted])
 
 ```text
 shadow_targets -> <W> workspaces, <S> sessions shown
+titles: unavailable (title-read-failed ref=<12 hex>)   （仅标题整体读取失败）
 workspace <id> "<title>"  <path>
   <sessionId>  <state>[ archived][ subagent]  "<title>" | (untitled)
   (no sessions)

@@ -2,6 +2,7 @@
  * Self-check for lib/dispatch-core.js. Runs under plain Node with no host
  * services: builds synthetic session logs and asserts the ported judgment.
  */
+import { renderTargets } from '../lib/core-render.js'
 import assert from 'node:assert/strict'
 import { suite } from './harness.mjs'
 import {
@@ -306,7 +307,10 @@ check('TC-CORE-044', 'render: a long event summary is bounded', () => {
   assert.ok(line.length < 260, `summary too long: ${line.length}`)
 })
 
-todo('TC-CORE-045', 'renderTargets prints the titles-unavailable line only when asked (TASK-02)')
+check('TC-CORE-045', 'renderTargets prints the titles-unavailable line only when asked (TASK-02)', () => {
+  assert.equal(renderTargets({ workspaces: [], titlesUnavailable: 'x' }).split('\n')[1], 'titles: unavailable (x)')
+  assert.ok(!renderTargets({ workspaces: [] }).includes('titles:'))
+})
 check('TC-CORE-046', 'an inspection event page is introduced by the untrusted-data line (TASK-03)', () => {
   const lines = renderInspection({ state: 'idle', target: 'w/t', probed: true, asOfSeq: 1, events: ['#1 x {}'], eventPage: { total: 1, afterSeq: 0, lastSeq: 1, limit: 20 } }).split('\n')
   const marker = lines.indexOf(UNTRUSTED_LINE)

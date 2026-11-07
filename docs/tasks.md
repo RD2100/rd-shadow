@@ -5,7 +5,7 @@
 | 卡 | 标题 | 执行者 | 规模 | 状态 |
 |---|---|---|---|---|
 | TASK-01 | 配置的影子目录不存在时启动告警 | 本会话 | S | done（本批提交） |
-| TASK-02 | 标题读取失败时在目录输出中说明 | 任意 | S | open |
+| TASK-02 | 标题读取失败时在目录输出中说明 | 本会话 | S | done（本批提交） |
 | TASK-03 | 检查事件页加不可信数据标记 | 任意 | S | done（0.13.0 随 ADR-012） |
 | TASK-04 | persona 说明别的会话内容是数据 | 本会话 | XS | done（59e3869） |
 | TASK-05 | 串行化器清理已结束的链 | 任意 | S | open |
@@ -49,7 +49,7 @@
 - **允许修改的文件**：`lib/core-render.js`、`lib/op-targets.js`、`tests/dispatch-core.test.mjs`、`tests/tools-sim.mjs`、`docs/test-cases.md`、`docs/detailed-design.md`（§4.5、§6.3）、`CHANGELOG.md`、`docs/tasks.md`
 - **实现要求**：
   1. `renderTargets(result)`：若 `typeof result.titlesUnavailable === 'string' && result.titlesUnavailable.length > 0`，在第一行（`shadow_targets -> …`）之后插入 `titles: unavailable (<titlesUnavailable>)`。否则输出不变。
-  2. `op-targets.js`：`catch (error)` 里保存 `messageOf(error)`（从 `./core-contract.js` 导入），传给 `renderTargets({ …, titlesUnavailable })`；删除 `TODO(TASK-02)` 注释。
+  2. `op-targets.js`：`catch (error)` 里保存安全诊断码与关联号（原始错误不进入模型上下文；长度受限）（从 `./core-contract.js` 导入），传给 `renderTargets({ …, titlesUnavailable })`；删除 `TODO(TASK-02)` 注释。
   3. `tests/tools-sim.mjs`：在 `makeWorld()` 的 `world` 对象上加 `titlesThrow: false`；`readTitleSnapshots` 开头 `if (world.titlesThrow) throw new Error('title store offline')`。
 - **验收用例**：
   - TC-CORE-045：`renderTargets({workspaces: [], titlesUnavailable: 'x'})` 的第二行是 `titles: unavailable (x)`；不传该字段时没有以 `titles:` 开头的行。

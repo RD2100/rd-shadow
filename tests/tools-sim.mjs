@@ -67,6 +67,7 @@ function makeWorld() {
   const selections = new Map()
 
   const world = {
+    titlesThrow: false,
     sessions,
     workspaces,
     live,
@@ -157,6 +158,7 @@ function makeWorld() {
             return [...sessions.values()].map((session) => ({ header: session.header, live: live.has(session.id), persisted: true }))
           },
           async readTitleSnapshots(ids) {
+            if (world.titlesThrow) throw new Error('title store offline password=SECRET https://secret.invalid')
             // Mirrors the real contract: one `{sessionId, status, value|reason}` per
             // requested id, where a fulfilled value holds the header plus a title
             // snapshot object. Ids beginning with "unreadable-" model a failed read.
@@ -719,7 +721,17 @@ await check('TC-TGT-005', 'catalog refuses a non-shadow caller', async () => {
   assert.match(text, /^shadow_targets -> not-shadow/)
 })
 
-todo('TC-TGT-006', 'a failed title read keeps ids and states and adds a titles: unavailable line (TASK-02)')
+await check('TC-TGT-006', 'failed title reads retain ids and states with a safe diagnostic (TASK-02)', async () => {
+  const { world, tools, caller } = scenario()
+  world.titlesThrow = true
+  world.addSession('other-1', 'D:/work/proj')
+  world.addWorkspace('w1', ['target-1', 'other-1'])
+  const text = await tools.get('shadow_targets').execute({}, { agent: caller })
+  assert.match(text, /titles: unavailable \(title-read-failed ref=[a-f0-9]{12}\)/)
+  assert.match(text, /target-1  cold  \(untitled\)/)
+  assert.match(text, /other-1  cold  \(untitled\)/)
+  assert.ok(!text.includes('SECRET') && !text.includes('secret.invalid'))
+})
 
 /* ------------------------------------------------------------------ */
 /* Reply reading (ADR-012)                                             */
